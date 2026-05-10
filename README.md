@@ -1,6 +1,6 @@
 # RUG DNA — Onchain Behavioral Intelligence
 
-> **Built for the [Build with GoldRush](https://goldrush.dev) Track · Superteam Earn Hackathon** &nbsp;·&nbsp; [🚀 Live Demo](https://rug-dna-app.vercel.app) &nbsp;
+> **Built for the [Build with GoldRush](https://goldrush.dev) Track · Superteam Earn Hackathon** &nbsp;·&nbsp; [🚀 Live Demo](https://rug-dna-live.vercel.app) &nbsp;
 
 ![RUG DNA Dashboard](./public/dashboard-preview.png)
 
@@ -16,15 +16,6 @@
 | 🔬 Forensic Mode | Auto-generates case files with timeline, extraction path & AI narrative |
 | 🏛 Governance Trust | Decentralization credibility score for DAOs |
 | 📡 Live Feed | SSE stream of real-time alerts from GoldRush data |
-
----
-
-## 🖥 Demo
-
-1. **`/`** — Risk Monitor: all tracked projects sorted by threat level
-2. **Click a critical project** (e.g. `$RUGX`) → project detail with wallet graph + evidence
-3. **"View Full Case File"** → forensic reconstruction with timeline
-4. **Governance tab** → decentralization credibility analysis
 
 ---
 
@@ -131,8 +122,8 @@ curl -X POST http://localhost:3000/api/projects \
 ### Installation
 
 ```bash
-git clone https://github.com/adirathoreudr/rug-dna.git
-cd rug-dna
+git clone https://github.com/adirathoreudr/rug-dna-live.git
+cd rug-dna-app
 npm install
 cp .env.example .env.local
 ```
@@ -179,7 +170,8 @@ rug-dna-app/
 ├── components/               # UI components
 ├── types/                    # TypeScript type definitions
 ├── public/
-│   └── dashboard-preview.png # Dashboard screenshot
+│   ├── dashboard-preview.png # Dashboard screenshot
+│   └── architecture.png      # Architecture diagram
 ├── .env.example              # Environment variable template
 └── vercel.json               # Vercel deployment config
 ```
@@ -202,19 +194,6 @@ rug-dna-app/
 
 ---
 
-## 🌐 API Reference
-
-| Route | Method | Description |
-|---|---|---|
-| `/api/projects` | `GET` | List all monitored projects with risk scores |
-| `/api/projects` | `POST` | Ingest a new token by contract address + chain |
-| `/api/stream` | `GET` | SSE live intelligence feed |
-| `/api/forensic` | `GET` | All open forensic case files |
-| `/api/forensic?id=FCS-xxxx` | `GET` | Single case file |
-| `/api/governance` | `GET` | Governance trust scores |
-
----
-
 ## ⚙️ Environment Variables
 
 Copy `.env.example` and fill in your keys:
@@ -227,7 +206,7 @@ GOLDRUSH_API_KEY=cqt_your_key_here
 ANTHROPIC_API_KEY=sk-ant-your_key_here
 
 # App URL (auto-set on Vercel)
-NEXT_PUBLIC_APP_URL=http://localhost:3000
+NEXT_PUBLIC_APP_URL=https://rug-dna-live.vercel.app
 ```
 
 > **Note:** The app runs with mock data if no API key is provided (for demo purposes).
@@ -238,12 +217,12 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new)
 
-1. Repo is already live at [github.com/adirathoreudr/rug-dna](https://github.com/adirathoreudr/rug-dna)
-2. Deployment is live at [rug-dna-app.vercel.app](https://rug-dna-app.vercel.app)
+1. Repo is live at [github.com/adirathoreudr/rug-dna-live](https://github.com/adirathoreudr/rug-dna-live)
+2. Deployment is live at [rug-dna-live.vercel.app](https://rug-dna-live.vercel.app)
 3. To add your GoldRush key: go to [vercel.com](https://vercel.com) → Project → Settings → Environment Variables
-3. Framework: **Next.js** (auto-detected)
-4. Add environment variable: `GOLDRUSH_API_KEY = <your key>`
-5. Hit **Deploy** ✓
+4. Framework: **Next.js** (auto-detected)
+5. Add environment variable: `GOLDRUSH_API_KEY = <your key>`
+6. Hit **Deploy** ✓
 
 ---
 
