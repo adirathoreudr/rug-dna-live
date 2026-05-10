@@ -24,7 +24,9 @@ export default function GovernancePage({ params }: { params: Promise<{ id: strin
   return (
     <div style={{ background:'var(--bg)', minHeight:'100vh', fontFamily:'Syne,sans-serif' }}>
       <nav style={{ position:'fixed', top:0, left:0, right:0, zIndex:100, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 32px', borderBottom:'1px solid var(--border)', background:'rgba(8,10,15,0.9)', backdropFilter:'blur(20px)' }}>
-        <div style={{ fontFamily:'Geist Mono,monospace', fontSize:13, letterSpacing:'0.15em' }}>RUG DNA</div>
+        <Link href="/" style={{ textDecoration:'none', color:'inherit' }}>
+          <div style={{ fontFamily:'Geist Mono,monospace', fontSize:13, letterSpacing:'0.15em', cursor:'pointer' }}>RUG DNA</div>
+        </Link>
         <Link href={`/project/${id}`} style={{ fontFamily:'Geist Mono,monospace', fontSize:10, color:'var(--text2)', textDecoration:'none' }}>← PROJECT</Link>
       </nav>
       <div style={{ maxWidth:1100, margin:'0 auto', padding:'88px 32px 60px' }}>

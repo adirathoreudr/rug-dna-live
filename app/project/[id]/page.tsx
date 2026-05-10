@@ -257,7 +257,9 @@ function WalletsTab({ graph }: { graph: { nodes: GraphNode[] } }) {
 function TopBar() {
   return (
     <nav style={{ position:'fixed', top:0, left:0, right:0, zIndex:100, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 32px', borderBottom:'1px solid var(--border)', background:'rgba(8,10,15,0.9)', backdropFilter:'blur(20px)' }}>
-      <div style={{ fontFamily:'Geist Mono,monospace', fontSize:13, letterSpacing:'0.15em' }}>RUG DNA</div>
+      <Link href="/" style={{ textDecoration:'none', color:'inherit' }}>
+        <div style={{ fontFamily:'Geist Mono,monospace', fontSize:13, letterSpacing:'0.15em', cursor:'pointer' }}>RUG DNA</div>
+      </Link>
       <Link href="/dashboard" style={{ fontFamily:'Geist Mono,monospace', fontSize:10, color:'var(--text2)', textDecoration:'none', letterSpacing:'0.1em' }}>← BACK TO MONITOR</Link>
     </nav>
   );

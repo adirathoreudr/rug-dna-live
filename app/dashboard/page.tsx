@@ -47,16 +47,18 @@ export default function Home() {
 
       {/* NAV */}
       <nav style={{ position:'fixed', top:0, left:0, right:0, zIndex:100, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 32px', borderBottom:'1px solid var(--border)', background:'rgba(8,10,15,0.9)', backdropFilter:'blur(20px)' }}>
-        <div style={{ fontFamily:'Geist Mono,monospace', fontSize:13, letterSpacing:'0.15em', display:'flex', alignItems:'center', gap:10 }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-            <path d="M6 3C6 3 8 6 12 6C16 6 18 3 18 3" stroke="rgba(0,229,255,0.7)" strokeWidth="1.5"/>
-            <path d="M6 21C6 21 8 18 12 18C16 18 18 21 18 21" stroke="rgba(0,229,255,0.7)" strokeWidth="1.5"/>
-            <circle cx="12" cy="9" r="1.5" fill="rgba(0,229,255,0.6)"/>
-            <circle cx="12" cy="12" r="1.5" fill="rgba(255,255,255,0.3)"/>
-            <circle cx="12" cy="15" r="1.5" fill="rgba(255,59,59,0.6)"/>
-          </svg>
-          RUG DNA
-        </div>
+        <Link href="/" style={{ textDecoration:'none', color:'inherit' }}>
+          <div style={{ fontFamily:'Geist Mono,monospace', fontSize:13, letterSpacing:'0.15em', display:'flex', alignItems:'center', gap:10, cursor:'pointer' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M6 3C6 3 8 6 12 6C16 6 18 3 18 3" stroke="rgba(0,229,255,0.7)" strokeWidth="1.5"/>
+              <path d="M6 21C6 21 8 18 12 18C16 18 18 21 18 21" stroke="rgba(0,229,255,0.7)" strokeWidth="1.5"/>
+              <circle cx="12" cy="9" r="1.5" fill="rgba(0,229,255,0.6)"/>
+              <circle cx="12" cy="12" r="1.5" fill="rgba(255,255,255,0.3)"/>
+              <circle cx="12" cy="15" r="1.5" fill="rgba(255,59,59,0.6)"/>
+            </svg>
+            RUG DNA
+          </div>
+        </Link>
         <div style={{ display:'flex', gap:24, alignItems:'center' }}>
           {(['monitor','forensic','governance'] as const).map(m => (
             <button key={m} onClick={() => setActiveMode(m)}
