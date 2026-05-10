@@ -121,7 +121,7 @@ export function normalizeTxToEvent(tx: GRTransaction, projectId: string, chain: 
   return {
     id: `${tx.tx_hash}-${eventType}`,
     projectId,
-    chain: chain as any,
+    chain: chain as Chain,
     txHash: tx.tx_hash,
     blockHeight: tx.block_height,
     timestamp: new Date(tx.block_signed_at).getTime(),

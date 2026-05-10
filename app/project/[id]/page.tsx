@@ -2,12 +2,13 @@
 import { useEffect, useState } from 'react';
 import { use } from 'react';
 import Link from 'next/link';
+import type { Project, RiskScore as ProjectRiskScore, ForensicCase, GovernanceScore, NormalizedEvent, GraphNode, GraphEdge, EvidenceItem } from '@/types';
 
 const RC: Record<string,string> = { critical:'#ff3b3b', high:'#ff7a00', moderate:'#ffb300', low:'#00ff88' };
 
 export default function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<{ project: Project; riskScore: ProjectRiskScore; graph: { nodes: GraphNode[]; edges: GraphEdge[] }; recentEvents: NormalizedEvent[]; forensicCase?: ForensicCase; governanceScore?: GovernanceScore } | null>(null);
   const [tab, setTab] = useState<'overview'|'graph'|'evidence'|'wallets'>('overview');
 
   useEffect(() => {
@@ -97,7 +98,7 @@ function ScoreRing({ score, color }: { score: number; color: string }) {
   );
 }
 
-function OverviewTab({ riskScore, forensicCase, governanceScore, recentEvents }: any) {
+function OverviewTab({ riskScore, forensicCase, governanceScore, recentEvents }: { riskScore: ProjectRiskScore; forensicCase?: ForensicCase; governanceScore?: GovernanceScore; recentEvents: NormalizedEvent[] }) {
   return (
     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:1, background:'var(--border)' }}>
       {/* Forensic */}
@@ -123,7 +124,7 @@ function OverviewTab({ riskScore, forensicCase, governanceScore, recentEvents }:
           <>
             <div style={{ fontSize:40, fontWeight:800, color:'var(--violet)', marginBottom:8 }}>{governanceScore.trustScore}<span style={{ fontSize:18, color:'var(--text3)'}}>/100</span></div>
             <div style={{ fontFamily:'Geist Mono,monospace', fontSize:11, color:'var(--text2)', lineHeight:1.6, marginBottom:12 }}>{governanceScore.explanation?.slice(0,120)}...</div>
-            {[['Distribution', governanceScore.distributionScore], ['Vote Independence', governanceScore.voteIndependenceScore], ['Transparency', governanceScore.transparencyScore]].map(([l,v]: any) => (
+            {([['Distribution', governanceScore.distributionScore], ['Vote Independence', governanceScore.voteIndependenceScore], ['Transparency', governanceScore.transparencyScore]] as [string, number][]).map(([l,v]) => (
               <div key={l} style={{ marginBottom:8 }}>
                 <div style={{ display:'flex', justifyContent:'space-between', fontFamily:'Geist Mono,monospace', fontSize:9, color:'var(--text3)', marginBottom:3 }}><span>{l}</span><span>{v}/100</span></div>
                 <div style={{ height:3, background:'var(--surface2)', borderRadius:1 }}><div style={{ height:'100%', width:`${v}%`, background:'var(--violet)', borderRadius:1 }}/></div>
@@ -135,7 +136,7 @@ function OverviewTab({ riskScore, forensicCase, governanceScore, recentEvents }:
       {/* Recent Events */}
       <div style={{ background:'var(--bg2)', padding:28, gridColumn:'span 2' }}>
         <div style={{ fontFamily:'Geist Mono,monospace', fontSize:9, letterSpacing:'0.15em', color:'var(--text3)', textTransform:'uppercase', marginBottom:14 }}>Recent Events ({recentEvents?.length || 0})</div>
-        {(recentEvents || []).slice(0,8).map((e: any) => (
+        {(recentEvents || []).slice(0,8).map((e: NormalizedEvent) => (
           <div key={e.id} style={{ display:'flex', alignItems:'center', gap:16, padding:'8px 0', borderBottom:'1px solid var(--border)', fontFamily:'Geist Mono,monospace', fontSize:11 }}>
             <span className={`badge badge-${e.eventType === 'liquidity_remove' ? 'critical' : 'moderate'}`}>{e.eventType?.replace('_',' ')}</span>
             <span style={{ color:'var(--text3)', fontSize:9 }}>{new Date(e.timestamp).toLocaleString()}</span>
@@ -148,17 +149,18 @@ function OverviewTab({ riskScore, forensicCase, governanceScore, recentEvents }:
   );
 }
 
-function GraphTab({ graph, project }: any) {
+function GraphTab({ graph, project }: { graph: { nodes: GraphNode[]; edges: GraphEdge[] }; project: Project }) {
   if (!graph?.nodes?.length) return <div style={{ padding:40, fontFamily:'Geist Mono,monospace', fontSize:11, color:'var(--text3)' }}>No graph data available.</div>;
   const nodes = graph.nodes.slice(0, 30);
   const edges = graph.edges.slice(0, 50);
   const W = 800, H = 400;
-  const nodeMap = new Map<string, any>(nodes.map((n: any) => [n.id, n]));
-  const getColor = (n: any) => {
-    if (n.metadata?.isDeployer) return '#ff3b3b';
+  const nodeMap = new Map<string, GraphNode>(nodes.map((n: GraphNode) => [n.id, n]));
+  const getColor = (n: GraphNode) => {
+    const meta = n.metadata as Record<string, any>;
+    if (meta.isDeployer) return '#ff3b3b';
     if (n.nodeType === 'token') return '#00e5ff';
     if (n.nodeType === 'liquidity_event') return '#ffb300';
-    if (n.isSuspicious || n.metadata?.isSuspicious) return '#ff7a00';
+    if (meta.isSuspicious) return '#ff7a00';
     return 'rgba(0,229,255,0.5)';
   };
   return (
@@ -173,14 +175,14 @@ function GraphTab({ graph, project }: any) {
         {[100,200,300].map(y => <line key={y} x1="0" y1={y} x2={W} y2={y} stroke="rgba(255,255,255,0.03)" strokeWidth="1"/>)}
         {[200,400,600].map(x => <line key={x} x1={x} y1="0" x2={x} y2={H} stroke="rgba(255,255,255,0.03)" strokeWidth="1"/>)}
         {/* Edges */}
-        {edges.map((e: any) => {
+        {edges.map((e: GraphEdge) => {
           const s = nodeMap.get(e.sourceId), t = nodeMap.get(e.targetId);
           if (!s?.x || !t?.x) return null;
           const isSusp = e.edgeType === 'funded_by' || e.weight > 2;
           return <line key={e.id} x1={s.x} y1={s.y} x2={t.x} y2={t.y} stroke={isSusp ? 'rgba(255,59,59,0.3)' : 'rgba(0,229,255,0.15)'} strokeWidth={isSusp ? 1.5 : 1} strokeDasharray={isSusp ? '5,3' : '0'} markerEnd="url(#arr)"/>;
         })}
         {/* Nodes */}
-        {nodes.map((n: any) => {
+        {nodes.map((n: GraphNode) => {
           if (!n.x || !n.y) return null;
           const r = n.nodeType === 'token' ? 18 : n.metadata?.isDeployer ? 16 : 8;
           const c = getColor(n);
@@ -206,12 +208,12 @@ function GraphTab({ graph, project }: any) {
   );
 }
 
-function EvidenceTab({ riskScore }: any) {
+function EvidenceTab({ riskScore }: { riskScore: ProjectRiskScore }) {
   if (!riskScore?.evidenceItems?.length) return <div style={{ padding:40, fontFamily:'Geist Mono,monospace', fontSize:11, color:'var(--text3)' }}>No evidence items computed.</div>;
   return (
     <div>
       <div style={{ display:'flex', flexDirection:'column', gap:1, background:'var(--border)' }}>
-        {riskScore.evidenceItems.map((e: any, i: number) => (
+        {riskScore.evidenceItems.map((e: EvidenceItem, i: number) => (
           <div key={e.id} style={{ background:'var(--bg2)', padding:'20px 24px', display:'flex', gap:16 }}>
             <span style={{ fontFamily:'Geist Mono,monospace', fontSize:10, color:'var(--text3)', width:24, flexShrink:0, paddingTop:2 }}>{String(i+1).padStart(2,'0')}</span>
             <div style={{ flex:1 }}>
@@ -230,8 +232,8 @@ function EvidenceTab({ riskScore }: any) {
   );
 }
 
-function WalletsTab({ graph }: any) {
-  const wallets = (graph?.nodes || []).filter((n: any) => n.nodeType === 'wallet');
+function WalletsTab({ graph }: { graph: { nodes: GraphNode[] } }) {
+  const wallets = (graph?.nodes || []).filter((n: GraphNode) => n.nodeType === 'wallet');
   return (
     <div style={{ overflowX:'auto' }}>
       <table className="data-table">

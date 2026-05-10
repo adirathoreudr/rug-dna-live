@@ -2,10 +2,11 @@
 import { useEffect, useState } from 'react';
 import { use } from 'react';
 import Link from 'next/link';
+import type { ForensicCase, TimelineEvent, ExtractionStep, EvidenceItem } from '@/types';
 
 export default function CasePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const [fc, setFc] = useState<any>(null);
+  const [fc, setFc] = useState<ForensicCase | null>(null);
 
   useEffect(() => {
     fetch(`/api/forensic?id=${id}`).then(r => r.json()).then(d => setFc(d.case));
@@ -59,7 +60,7 @@ export default function CasePage({ params }: { params: Promise<{ id: string }> }
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:1, background:'var(--border)', marginBottom:32 }}>
           <div style={{ background:'var(--bg2)', padding:28 }}>
             <div style={{ fontFamily:'Geist Mono,monospace', fontSize:9, letterSpacing:'0.15em', color:'var(--text3)', textTransform:'uppercase', marginBottom:20 }}>Incident Timeline</div>
-            {(fc.timeline || []).map((t: any) => (
+            {(fc.timeline || []).map((t: TimelineEvent) => (
               <div key={t.id} style={{ display:'flex', gap:14, paddingBottom:20, position:'relative' }}>
                 <div style={{ position:'absolute', left:7, top:16, bottom:0, width:1, background:'var(--border)' }}/>
                 <div style={{ width:15, height:15, borderRadius:'50%', border:'1px solid', borderColor: SEV_COL[t.severity], background: `${SEV_COL[t.severity]}22`, flexShrink:0, marginTop:2, position:'relative', zIndex:1 }}/>
@@ -72,7 +73,7 @@ export default function CasePage({ params }: { params: Promise<{ id: string }> }
           </div>
           <div style={{ background:'var(--bg2)', padding:28 }}>
             <div style={{ fontFamily:'Geist Mono,monospace', fontSize:9, letterSpacing:'0.15em', color:'var(--text3)', textTransform:'uppercase', marginBottom:20 }}>Extraction Path</div>
-            {(fc.extractionPath || []).map((s: any) => (
+            {(fc.extractionPath || []).map((s: ExtractionStep) => (
               <div key={s.step} style={{ padding:'12px 0', borderBottom:'1px solid var(--border)' }}>
                 <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
                   <span style={{ fontFamily:'Geist Mono,monospace', fontSize:9, color:'var(--text3)', background:'var(--surface2)', padding:'2px 6px' }}>STEP {s.step}</span>
@@ -91,7 +92,7 @@ export default function CasePage({ params }: { params: Promise<{ id: string }> }
         <div style={{ marginBottom:32 }}>
           <div style={{ fontFamily:'Geist Mono,monospace', fontSize:9, letterSpacing:'0.2em', color:'var(--text3)', textTransform:'uppercase', marginBottom:12 }}>Evidence Items ({fc.evidenceItems?.length || 0})</div>
           <div style={{ display:'flex', flexDirection:'column', gap:1, background:'var(--border)' }}>
-            {(fc.evidenceItems || []).map((e: any, i: number) => (
+            {(fc.evidenceItems || []).map((e: EvidenceItem, i: number) => (
               <div key={e.id} style={{ background:'var(--bg2)', padding:'18px 24px', display:'flex', gap:16 }}>
                 <span style={{ fontFamily:'Geist Mono,monospace', fontSize:10, color:'var(--text3)', width:24, flexShrink:0 }}>{String(i+1).padStart(2,'0')}</span>
                 <div style={{ flex:1 }}>

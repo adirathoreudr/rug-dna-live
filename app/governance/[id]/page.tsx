@@ -2,11 +2,12 @@
 import { useEffect, useState } from 'react';
 import { use } from 'react';
 import Link from 'next/link';
+import type { GovernanceScore, Project, DominantWallet } from '@/types';
 
 export default function GovernancePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const [gs, setGs] = useState<any>(null);
-  const [proj, setProj] = useState<any>(null);
+  const [gs, setGs] = useState<GovernanceScore | null>(null);
+  const [proj, setProj] = useState<Project | null>(null);
 
   useEffect(() => {
     fetch(`/api/projects/${id}`).then(r => r.json()).then(d => {
@@ -47,10 +48,10 @@ export default function GovernancePage({ params }: { params: Promise<{ id: strin
             <div style={{ fontFamily:'Geist Mono,monospace', fontSize:9, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.15em', marginBottom:16 }}>Analysis</div>
             <div style={{ fontFamily:'Geist Mono,monospace', fontSize:12, color:'var(--text2)', lineHeight:1.75, marginBottom:24 }}>{gs.explanation}</div>
             <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-              {[['Distribution Score', gs.distributionScore, gs.distributionScore < 40 ? 'var(--red)' : gs.distributionScore < 70 ? 'var(--amber)' : 'var(--green)'],
+              {([['Distribution Score', gs.distributionScore, gs.distributionScore < 40 ? 'var(--red)' : gs.distributionScore < 70 ? 'var(--amber)' : 'var(--green)'],
                 ['Vote Independence', gs.voteIndependenceScore, gs.voteIndependenceScore < 40 ? 'var(--red)' : 'var(--amber)'],
                 ['Transparency', gs.transparencyScore, gs.transparencyScore < 40 ? 'var(--amber)' : 'var(--green)']
-              ].map(([l,v,c]: any) => (
+              ] as [string, number, string][]).map(([l,v,c]) => (
                 <div key={l}>
                   <div style={{ display:'flex', justifyContent:'space-between', fontFamily:'Geist Mono,monospace', fontSize:10, color:'var(--text3)', marginBottom:4 }}>
                     <span>{l}</span><span style={{ color:c }}>{v}/100</span>
@@ -85,7 +86,7 @@ export default function GovernancePage({ params }: { params: Promise<{ id: strin
             <table className="data-table">
               <thead><tr><th>Address</th><th>Voting Power</th><th>Alignment</th><th>Signal</th></tr></thead>
               <tbody>
-                {gs.dominantWallets.map((w: any) => (
+                {gs.dominantWallets.map((w: DominantWallet) => (
                   <tr key={w.address}>
                     <td><span style={{ fontFamily:'Geist Mono,monospace', fontSize:11, color:'var(--cyan)' }}>{w.address?.slice(0,10)}...{w.address?.slice(-6)}</span></td>
                     <td style={{ color: w.votingPower > 30 ? 'var(--red)' : 'var(--amber)', fontWeight:700 }}>{w.votingPower?.toFixed(1)}%</td>

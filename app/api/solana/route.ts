@@ -12,7 +12,7 @@ export async function GET() {
   const allProjects = db.getAllProjects();
   const solanaProjects = allProjects.filter(p => p.chain === 'solana-mainnet');
 
-  let newLaunches: any[] = [];
+  let newLaunches: unknown[] = [];
   if (hasApiKey()) {
     try { newLaunches = await getSolanaNewTokens(10); } catch {}
   }

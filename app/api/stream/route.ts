@@ -4,7 +4,7 @@ import db from '@/lib/db';
 import { nanoid, timeAgo } from '@/lib/utils';
 import { hasApiKey, getSolanaNewTokens, getNewDexPairs } from '@/lib/goldrush';
 import { ingestProject } from '@/lib/ingestion';
-import type { LiveEvent } from '@/types';
+import type { LiveEvent, Chain } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,7 +61,7 @@ export async function GET(req: Request) {
               send(discoveryEvent);
 
               // Ingest async (don't await — don't block stream)
-              ingestProject(addr, chain as any).then(proj => {
+              ingestProject(addr, chain as Chain).then(proj => {
                 if (!proj) return;
                 const ev: LiveEvent = {
                   id: nanoid(),

@@ -3,7 +3,7 @@
 // Sources: Ethereum, Base, Matic, Solana via GoldRush
 // ============================================================
 
-import type { Project, Wallet, NormalizedEvent, RiskLevel, Chain, LiveEvent } from '@/types';
+import type { Project, Wallet, NormalizedEvent, RiskLevel, Chain, LiveEvent, GRTransaction } from '@/types';
 import db from './db';
 import { nanoid } from './utils';
 import {
@@ -262,7 +262,7 @@ async function discoverNewLaunches() {
 }
 
 // ─── DETECT EVENT TYPE FROM TX ────────────────────────────────
-function detectEventType(tx: any): NormalizedEvent['eventType'] {
+function detectEventType(tx: GRTransaction): NormalizedEvent['eventType'] {
   const logs = tx.log_events ?? [];
   for (const log of logs) {
     const name = log.decoded?.name?.toLowerCase() ?? '';
