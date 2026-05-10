@@ -58,7 +58,32 @@ export default function Landing() {
         </div>
         <div style={{ display: 'flex', gap: 32, alignItems: 'center' }}>
           {[['#monitor', 'Monitor'], ['#forensic', 'Forensic'], ['#governance', 'Governance'], ['#architecture', 'Architecture']].map(([href, label]) => (
-            <a key={href} href={href} style={{ fontFamily: 'Geist Mono, monospace', fontSize: 10, letterSpacing: '0.12em', color: 'rgba(255,255,255,0.45)', textDecoration: 'none', textTransform: 'uppercase' }}>{label}</a>
+            <a 
+              key={href} 
+              href={href} 
+              onClick={(e) => {
+                e.preventDefault();
+                const id = href.replace('#', '');
+                const element = document.getElementById(id);
+                if (element) {
+                  const offset = 60;
+                  const bodyRect = document.body.getBoundingClientRect().top;
+                  const elementRect = element.getBoundingClientRect().top;
+                  const elementPosition = elementRect - bodyRect;
+                  const offsetPosition = elementPosition - offset;
+
+                  window.scrollTo({
+                    top: offsetPosition,
+                    behavior: 'smooth'
+                  });
+                }
+              }}
+              style={{ fontFamily: 'Geist Mono, monospace', fontSize: 10, letterSpacing: '0.12em', color: 'rgba(255,255,255,0.45)', textDecoration: 'none', textTransform: 'uppercase', cursor: 'pointer', transition: 'color 0.2s' }}
+              onMouseEnter={e => (e.currentTarget as HTMLAnchorElement).style.color = '#fff'}
+              onMouseLeave={e => (e.currentTarget as HTMLAnchorElement).style.color = 'rgba(255,255,255,0.45)'}
+            >
+              {label}
+            </a>
           ))}
         </div>
         <Link href="/dashboard">
@@ -92,7 +117,21 @@ export default function Landing() {
             <Link href="/dashboard">
               <button style={btnPrimary}>Open Intelligence Console</button>
             </Link>
-            <a href="#architecture">
+            <a 
+              href="#architecture"
+              onClick={(e) => {
+                e.preventDefault();
+                const element = document.getElementById('architecture');
+                if (element) {
+                  const offset = 60;
+                  const bodyRect = document.body.getBoundingClientRect().top;
+                  const elementRect = element.getBoundingClientRect().top;
+                  const elementPosition = elementRect - bodyRect;
+                  const offsetPosition = elementPosition - offset;
+                  window.scrollTo({ top: offsetPosition, behavior: 'smooth' });
+                }
+              }}
+            >
               <button style={btnOutline}>View Architecture</button>
             </a>
           </div>
