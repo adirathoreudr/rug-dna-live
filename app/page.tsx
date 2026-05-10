@@ -57,11 +57,14 @@ export default function Landing() {
           RUG DNA
         </div>
         <div style={{ display: 'flex', gap: 32, alignItems: 'center' }}>
-          {[['#monitor', 'Monitor'], ['#forensic', 'Forensic'], ['#governance', 'Governance'], ['#architecture', 'Architecture']].map(([href, label]) => (
+          {[['#monitor', 'Monitor'], ['#forensic', 'Forensic'], ['#governance', 'Governance'], ['https://github.com/adirathoreudr/rug-dna-live', 'GitHub']].map(([href, label]) => (
             <a 
               key={href} 
               href={href} 
+              target={href.startsWith('http') ? '_blank' : undefined}
+              rel={href.startsWith('http') ? 'noopener noreferrer' : undefined}
               onClick={(e) => {
+                if (href.startsWith('http')) return;
                 e.preventDefault();
                 const id = href.replace('#', '');
                 const element = document.getElementById(id);
@@ -118,21 +121,11 @@ export default function Landing() {
               <button style={btnPrimary}>Open Intelligence Console</button>
             </Link>
             <a 
-              href="#architecture"
-              onClick={(e) => {
-                e.preventDefault();
-                const element = document.getElementById('architecture');
-                if (element) {
-                  const offset = 60;
-                  const bodyRect = document.body.getBoundingClientRect().top;
-                  const elementRect = element.getBoundingClientRect().top;
-                  const elementPosition = elementRect - bodyRect;
-                  const offsetPosition = elementPosition - offset;
-                  window.scrollTo({ top: offsetPosition, behavior: 'smooth' });
-                }
-              }}
+              href="https://github.com/adirathoreudr/rug-dna-live"
+              target="_blank"
+              rel="noopener noreferrer"
             >
-              <button style={btnOutline}>View Architecture</button>
+              <button style={btnOutline}>View GitHub</button>
             </a>
           </div>
         </div>
