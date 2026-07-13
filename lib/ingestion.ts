@@ -1,20 +1,21 @@
-// RUG DNA — Live Data Ingestion Pipeline (NO MOCK DATA)
-// RUG DNA — Live Data Ingestion Pipeline (NO MOCK DATA)
+// ============================================================
+// RUG DNA — Live Data Ingestion Pipeline
 // Sources: Ethereum, Base, Matic, Solana via GoldRush
 // ============================================================
 
-import type { Project, Wallet, NormalizedEvent, RiskLevel, Chain, LiveEvent, GRTransaction } from '@/types';
+import type { Project, Wallet, NormalizedEvent, RiskLevel, Chain, GRTransaction } from '@/types';
 import db from './db';
 import { nanoid } from './utils';
 import {
   normalizeTxToEvent, hasApiKey, getNewDexPairs, getSolanaNewTokens,
-  getSolanaTokenTransactions, getTokenMetadata, getTokenHolders, getWalletTransactions,
+  getSolanaTokenTransactions, getTokenHoldersPage, getEarliestTransactions,
+  getWalletTransactions,
 } from './goldrush';
 import { computeRiskScore } from './risk-engine';
 import { buildGraph } from './graph-builder';
 import { shouldTriggerForensic, generateForensicCase } from './forensic-engine';
 import { computeGovernanceScore } from './governance-engine';
-// ─── MONITORED PROJECTS (real contracts across chains) ───────
+
 let initialized = false;
 
 // ─── MONITORED PROJECTS (real contracts across chains) ───────
@@ -27,7 +28,8 @@ const LIVE_PROJECTS: Array<{ tokenAddress: string; chain: string; pairAddress?: 
   // Base
   { tokenAddress: '0x532f27101965dd16442E59d40670FaF5eBB142E4', chain: 'base-mainnet' }, // BRETT
   { tokenAddress: '0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed', chain: 'base-mainnet' }, // DEGEN
-  // Solana — major tokens for Solana intelligence
+  // Solana — REST coverage is balances-only; these ingest once the
+  // Streaming integration lands and are skipped gracefully until then
   { tokenAddress: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263', chain: 'solana-mainnet' }, // BONK
   { tokenAddress: 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm', chain: 'solana-mainnet' }, // WIF
   { tokenAddress: 'MEW1gQWJ3nEXg2qgERiKu7FAFj79PHvQVREQUzScPP5', chain: 'solana-mainnet' },  // MEW
@@ -44,15 +46,16 @@ export async function seedMockData() {
     return;
   }
 
-  // Ingest all live projects in parallel (non-blocking)
-  Promise.allSettled(
+  // Ingest all live projects; awaited so the first request that
+  // triggers seeding actually returns data instead of an empty list
+  const results = await Promise.allSettled(
     LIVE_PROJECTS.map(p => ingestProject(p.tokenAddress, p.chain as Chain))
-  ).then(results => {
-    const ok = results.filter(r => r.status === 'fulfilled' && r.value).length;
-    console.log(`RUG DNA: Ingested ${ok}/${LIVE_PROJECTS.length} live projects`);
-    // Discover new launches
-    discoverNewLaunches();
-  });
+  );
+  const ok = results.filter(r => r.status === 'fulfilled' && r.value).length;
+  console.log(`RUG DNA: Ingested ${ok}/${LIVE_PROJECTS.length} live projects`);
+
+  // Discover new launches (no-op until the Streaming worker lands)
+  discoverNewLaunches();
 }
 
 // ─── INGEST A SINGLE PROJECT ─────────────────────────────────
@@ -62,82 +65,103 @@ export async function ingestProject(tokenAddress: string, chain: Chain): Promise
     const existing = db.getProjectByToken(tokenAddress);
     if (existing) return existing;
 
-    const meta = await getTokenMetadata(chain, tokenAddress);
-    if (!meta) return null;
+    // One call: holders + token metadata + total holder count.
+    // null = upstream error (rate limit/network) — do not treat as empty.
+    const holdersPage = await getTokenHoldersPage(chain, tokenAddress, 100);
+    if (!holdersPage) {
+      console.error(`ingest: holders fetch failed for ${tokenAddress} (${chain})`);
+      return null;
+    }
+    const { holders, meta } = holdersPage;
+    if (!meta) {
+      console.warn(`ingest: no REST metadata for ${tokenAddress} on ${chain} — skipped`);
+      return null;
+    }
+
+    // Earliest transactions → real deployer, real launch date,
+    // genuine early buyers (transactions_v3 alone is newest-first)
+    const earliest = (await getEarliestTransactions(chain, tokenAddress)) ?? [];
+    const firstTx = earliest[0];
+    const deployerAddress = firstTx?.from_address ?? '';
+    const createdAt = firstTx ? new Date(firstTx.block_signed_at).getTime() : Date.now();
+
+    // Recent transactions → live activity events
+    const txs = (chain === 'solana-mainnet'
+      ? await getSolanaTokenTransactions(tokenAddress, 50)
+      : await getWalletTransactions(chain, tokenAddress, 50)) ?? [];
 
     const projectId = nanoid();
     const project: Project = {
       id: projectId,
       tokenAddress,
-      tokenSymbol: meta.symbol || tokenAddress.slice(0, 8),
-      tokenName: meta.name || 'Unknown',
+      tokenSymbol: meta.symbol,
+      tokenName: meta.name,
       chain,
-      deployerAddress: '0x0000000000000000000000000000000000000000',
-      createdAt: Date.now() - Math.random() * 14 * 86400000,
+      deployerAddress: deployerAddress || '0x0000000000000000000000000000000000000000',
+      createdAt,
       updatedAt: Date.now(),
       currentRiskLevel: 'low',
       currentRiskScore: 0,
       confidence: 0,
       evidenceSummary: 'Analyzing...',
-      holderCount: 0,
+      holderCount: holdersPage.totalHolderCount ?? holders.length,
       totalSupply: meta.total_supply,
     };
     db.upsertProject(project);
 
-    // Fetch live data
-    const [holders, txs] = await Promise.all([
-      getTokenHolders(chain, tokenAddress, 100),
-      chain === 'solana-mainnet'
-        ? getSolanaTokenTransactions(tokenAddress, 50)
-        : getWalletTransactions(chain, tokenAddress, 50),
-    ]);
-
-    project.holderCount = holders.length;
-
     // Normalize transactions to events
     const events: NormalizedEvent[] = txs.map(tx =>
-      normalizeTxToEvent(tx, projectId, chain,
-        detectEventType(tx)
-      )
+      normalizeTxToEvent(tx, projectId, chain, detectEventType(tx))
     );
     for (const ev of events) db.insertEvent(ev);
 
-    // Build wallets from holder data
+    // Build wallets from holder data — only fields actually observed
+    const now = Date.now();
     const wallets: Wallet[] = holders.slice(0, 30).map(h => ({
       address: h.address,
       chain,
-      firstSeen: Date.now() - Math.random() * 30 * 86400000,
-      lastSeen: Date.now(),
-      transactionCount: Math.floor(Math.random() * 200),
-      isDeployer: false,
+      firstSeen: now,
+      lastSeen: now,
+      transactionCount: 0,
+      isDeployer: !!deployerAddress && h.address.toLowerCase() === deployerAddress.toLowerCase(),
       isSuspicious: false,
       labels: [],
       balance: h.balance,
     }));
     for (const w of wallets) db.upsertWallet(w);
 
-    // Detect deployer from first tx
-    const deployerTx = txs.find(tx => tx.from_address);
-    if (deployerTx) {
-      project.deployerAddress = deployerTx.from_address;
+    // Deployer wallet + prior contract deployments (reuse signal).
+    // Contract-creation txs have no to_address.
+    let deployerTxHistory: string[] = [];
+    if (deployerAddress) {
       db.upsertWallet({
-        address: deployerTx.from_address,
+        address: deployerAddress,
         chain,
-        firstSeen: new Date(deployerTx.block_signed_at).getTime(),
-        lastSeen: Date.now(),
-        transactionCount: txs.length,
+        firstSeen: createdAt,
+        lastSeen: now,
+        transactionCount: earliest.length,
         isDeployer: true,
         isSuspicious: false,
         labels: ['deployer'],
       });
+      const deployerTxs = await getWalletTransactions(chain, deployerAddress, 50);
+      deployerTxHistory = (deployerTxs ?? [])
+        .filter(tx =>
+          !tx.to_address &&
+          tx.from_address.toLowerCase() === deployerAddress.toLowerCase() &&
+          tx.tx_hash !== firstTx?.tx_hash
+        )
+        .map(tx => tx.tx_hash);
     }
 
-    // Early buyers: wallets that transacted in first 10% of tx history
-    const earlyBuyers = txs.slice(0, Math.ceil(txs.length * 0.1)).map(tx => ({
-      address: tx.from_address,
-      timestamp: new Date(tx.block_signed_at).getTime(),
-      fundingSource: undefined,
-    }));
+    // Early buyers: senders of the genuinely earliest transactions
+    const earlyBuyers = earliest.slice(0, 10)
+      .filter(tx => tx.from_address && tx.from_address.toLowerCase() !== deployerAddress.toLowerCase())
+      .map(tx => ({
+        address: tx.from_address,
+        timestamp: new Date(tx.block_signed_at).getTime(),
+        fundingSource: undefined,
+      }));
 
     // Liquidity events from tx log
     const liquidityEvents = events
@@ -155,7 +179,7 @@ export async function ingestProject(tokenAddress: string, chain: Chain): Promise
       holders,
       wallets,
       events,
-      deployerTxHistory: [],
+      deployerTxHistory,
       earlyBuyers,
       liquidityEvents,
     };
@@ -174,13 +198,17 @@ export async function ingestProject(tokenAddress: string, chain: Chain): Promise
     for (const n of nodes) db.upsertGraphNode(n);
     for (const e of edges) db.upsertGraphEdge(e);
 
-    // Forensic
+    // Forensic — loss estimate derives from observed liquidity
+    // removals; no invented figures
     if (shouldTriggerForensic(riskScore)) {
+      const realizedRemovalUsd = liquidityEvents
+        .filter(e => e.type === 'remove')
+        .reduce((s, e) => s + e.amount, 0);
       const fc = generateForensicCase({
         project, riskScore, events,
-        deployerHistory: [],
+        deployerHistory: deployerTxHistory,
         victimWallets: wallets.filter(w => !w.isSuspicious).map(w => w.address).slice(0, 20),
-        estimatedLossUsd: riskScore.score * 2000,
+        estimatedLossUsd: realizedRemovalUsd,
       });
       db.upsertForensicCase(fc);
       project.forensicCaseId = fc.id;
@@ -206,7 +234,7 @@ export async function ingestProject(tokenAddress: string, chain: Chain): Promise
       tokenSymbol: project.tokenSymbol,
       eventType: 'pair_created',
       severity: riskScore.score > 70 ? 'critical' : riskScore.score > 40 ? 'warning' : 'info',
-      message: `$${project.tokenSymbol} (${chain}) — Risk: ${riskScore.score}/100 · ${riskScore.level.toUpperCase()} · ${holders.length} holders`,
+      message: `$${project.tokenSymbol} (${chain}) — Risk: ${riskScore.score}/100 · ${riskScore.level.toUpperCase()} · ${project.holderCount} holders`,
       timestamp: Date.now(),
     });
 
@@ -218,9 +246,10 @@ export async function ingestProject(tokenAddress: string, chain: Chain): Promise
 }
 
 // ─── DISCOVER NEW LAUNCHES ────────────────────────────────────
+// The legacy xy=k REST discovery endpoints are retired; these calls
+// return [] until the Streaming worker (newPairs subscription) lands.
 async function discoverNewLaunches() {
   try {
-    // EVM new pairs
     const [ethPairs, basePairs, solanaPairs] = await Promise.all([
       getNewDexPairs('eth-mainnet', 'uniswap_v3', 5),
       getNewDexPairs('base-mainnet', 'uniswap_v3', 5),
