@@ -7,9 +7,8 @@ import type { Project, Wallet, NormalizedEvent, RiskLevel, Chain, LiveEvent, GRT
 import db from './db';
 import { nanoid } from './utils';
 import {
-} from './goldrush';
   normalizeTxToEvent, hasApiKey, getNewDexPairs, getSolanaNewTokens,
-  getSolanaTokenTransactions,
+  getSolanaTokenTransactions, getTokenMetadata, getTokenHolders, getWalletTransactions,
 } from './goldrush';
 import { computeRiskScore } from './risk-engine';
 import { buildGraph } from './graph-builder';
