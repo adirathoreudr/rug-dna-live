@@ -1,12 +1,20 @@
-// GET /api/stream — SSE live intelligence feed (real GoldRush data)
+// GET /api/stream — SSE live intelligence feed
+//
+// Reader-only: the always-on streaming worker (worker/stream-worker.ts)
+// is the single writer of live events into the shared store; this route
+// tails the store over a short-lived SSE window. The browser EventSource
+// reconnects automatically when the window closes, so the feed is
+// continuous from the client's perspective while each serverless
+// invocation stays within platform duration limits.
 import { seedMockData } from '@/lib/ingestion';
 import db from '@/lib/db';
-import { nanoid, timeAgo } from '@/lib/utils';
-import { hasApiKey, getSolanaNewTokens, getNewDexPairs } from '@/lib/goldrush';
-import { ingestProject } from '@/lib/ingestion';
-import type { LiveEvent, Chain } from '@/types';
+import type { LiveEvent } from '@/types';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
+
+const WINDOW_MS = 24_000;
+const POLL_MS = 3_000;
 
 export async function GET(req: Request) {
   await seedMockData();
@@ -15,77 +23,41 @@ export async function GET(req: Request) {
 
   const stream = new ReadableStream({
     async start(controller) {
+      const seen = new Set<string>();
+      let closed = false;
+
       const send = (event: LiveEvent) => {
+        if (closed || seen.has(event.id)) return;
+        seen.add(event.id);
         try {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
-        } catch {}
+        } catch { closed = true; }
       };
 
-      // Push existing events first
+      // Push current feed first (oldest → newest so the client
+      // renders in order), then tail for new arrivals
       const existing = await db.getLiveEvents(undefined, 15);
-      for (const ev of existing) send(ev);
+      for (const ev of [...existing].reverse()) send(ev);
+      let since = existing[0]?.timestamp ?? Date.now() - 60_000;
 
-      // Poll for new events every 8s
-      let ticks = 0;
+      const deadline = Date.now() + WINDOW_MS;
       const interval = setInterval(async () => {
-        ticks++;
+        if (closed) { clearInterval(interval); return; }
+        try {
+          const latest = await db.getLiveEvents(since, 20);
+          for (const ev of [...latest].reverse()) send(ev);
+          if (latest[0]) since = Math.max(since, latest[0].timestamp);
+        } catch { /* transient read failure — next tick retries */ }
 
-        // Every tick: push latest db events
-        const latest = await db.getLiveEvents(undefined, 3);
-        for (const ev of latest.slice(0, 2)) send(ev);
-
-        // Every 3rd tick: scan for new launches (if API key present)
-        if (ticks % 3 === 0 && hasApiKey()) {
-          try {
-            const [solanaPairs, ethPairs] = await Promise.all([
-              getSolanaNewTokens(3),
-              getNewDexPairs('eth-mainnet', 'uniswap_v3', 3),
-            ]);
-
-            for (const p of [...solanaPairs, ...ethPairs].slice(0, 2)) {
-              const addr = p.token0_contract_address;
-              if (!addr) continue;
-              const chain = solanaPairs.includes(p) ? 'solana-mainnet' : 'eth-mainnet';
-
-              // Fire discovery event immediately
-              const discoveryEvent: LiveEvent = {
-                id: nanoid(),
-                projectId: 'discovery',
-                tokenSymbol: p.token0_contract_ticker_symbol ?? addr.slice(0, 8),
-                eventType: 'pair_created',
-                severity: 'info',
-                message: `New pair detected on ${chain}: $${p.token0_contract_ticker_symbol ?? addr.slice(0, 10)} — Analyzing...`,
-                timestamp: Date.now(),
-              };
-              await db.pushLiveEvent(discoveryEvent);
-              send(discoveryEvent);
-
-              // Ingest async (don't await — don't block stream)
-              ingestProject(addr, chain as Chain).then(async proj => {
-                if (!proj) return;
-                const ev: LiveEvent = {
-                  id: nanoid(),
-                  projectId: proj.id,
-                  tokenSymbol: proj.tokenSymbol,
-                  eventType: 'pair_created',
-                  severity: proj.currentRiskScore > 70 ? 'critical' : proj.currentRiskScore > 40 ? 'warning' : 'info',
-                  message: `$${proj.tokenSymbol} scored ${proj.currentRiskScore}/100 · ${proj.currentRiskLevel.toUpperCase()} · ${proj.holderCount} holders · ${chain}`,
-                  timestamp: Date.now(),
-                };
-                await db.pushLiveEvent(ev);
-                send(ev);
-              });
-            }
-          } catch {}
-        }
-
-        if (ticks >= 20) {
+        if (Date.now() >= deadline) {
           clearInterval(interval);
+          closed = true;
           try { controller.close(); } catch {}
         }
-      }, 8000);
+      }, POLL_MS);
 
       req.signal?.addEventListener('abort', () => {
+        closed = true;
         clearInterval(interval);
         try { controller.close(); } catch {}
       });
