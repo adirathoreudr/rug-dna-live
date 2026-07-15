@@ -2,16 +2,17 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 
-const TICKER_ITEMS = [
-  { text: 'CRITICAL · $RUGX — Deployer wallet reuse detected — 97% confidence', type: 'alert' },
-  { text: 'WARNING · $MOONFI — Holder concentration spike to 78%', type: 'warn' },
-  { text: 'MONITOR · $DEXLP — New pair · 14 wallets funded from same source', type: '' },
-  { text: 'FORENSIC CASE OPENED · FCS-2847 · Coordinated exit detected', type: 'alert' },
-  { text: 'GOVERNANCE · $VOTETOKEN — 3 wallets control 91% of votes', type: 'warn' },
-  { text: 'SOLANA · $BONK — 890K holders monitored · Risk: LOW', type: '' },
-  { text: 'SOLANA · $WIF — Behavioral graph updated · 340K holders', type: '' },
-  { text: 'BASE · $BRETT — New cluster detected · 7 wallets, shared funder', type: 'warn' },
+// Neutral capability lines shown until live data arrives — these
+// describe the product; they do not claim to be live alerts
+const TICKER_PLACEHOLDER = [
+  { text: 'GoldRush Foundational API — holder & transaction intelligence', type: '' },
+  { text: 'GoldRush Streaming API — new pairs & liquidity monitoring', type: '' },
+  { text: 'Risk engine — 6 behavioral signal categories, scored 0-100', type: '' },
+  { text: 'Forensic mode — case files auto-open on threshold breach', type: '' },
 ];
+
+interface TickerItem { text: string; type: string }
+interface LandingProject { tokenSymbol: string; chain: string; currentRiskScore: number; currentRiskLevel: string; holderCount: number }
 
 const RISK_TIERS = [
   { level: 'Low', score: 12, col: '#00ff88', bg: 'rgba(0,255,136,0.1)', border: 'rgba(0,255,136,0.2)', signals: ['Deployer wallet — clean history','Holder distribution — 8,472 addresses','Liquidity — stable over 72hr','Early buyers — no cluster signal'] },
@@ -21,28 +22,48 @@ const RISK_TIERS = [
 ];
 
 export default function Landing() {
-  const [counts, setCounts] = useState({ projects: 0, cases: 0, accuracy: 0, value: 0, latency: 0 });
+  const [counts, setCounts] = useState({ projects: 0, cases: 0, critical: 0, events: 0 });
+  const [ticker, setTicker] = useState<TickerItem[]>(TICKER_PLACEHOLDER);
   const heroRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Counter animation
-    const targets = { projects: 2847, cases: 341, accuracy: 94, value: 127, latency: 18 };
-    const duration = 1800;
-    const start = Date.now();
-    const tick = () => {
-      const p = Math.min((Date.now() - start) / duration, 1);
-      const e = 1 - Math.pow(1 - p, 3);
-      setCounts({
-        projects: Math.floor(e * targets.projects),
-        cases: Math.floor(e * targets.cases),
-        accuracy: Math.floor(e * targets.accuracy),
-        value: Math.floor(e * targets.value),
-        latency: Math.floor(e * targets.latency),
-      });
-      if (p < 1) requestAnimationFrame(tick);
-    };
-    const timer = setTimeout(() => requestAnimationFrame(tick), 400);
-    return () => clearTimeout(timer);
+    // Live stats from the store — the landing page shows real numbers
+    let cancelled = false;
+    fetch('/api/projects')
+      .then(r => r.json())
+      .then((data: { projects?: LandingProject[]; stats?: { totalProjects: number; openCases: number; critical: number; totalEvents: number } }) => {
+        if (cancelled || !data?.stats) return;
+        const targets = {
+          projects: data.stats.totalProjects ?? 0,
+          cases: data.stats.openCases ?? 0,
+          critical: data.stats.critical ?? 0,
+          events: data.stats.totalEvents ?? 0,
+        };
+        const duration = 1800;
+        const start = Date.now();
+        const tick = () => {
+          if (cancelled) return;
+          const p = Math.min((Date.now() - start) / duration, 1);
+          const e = 1 - Math.pow(1 - p, 3);
+          setCounts({
+            projects: Math.floor(e * targets.projects),
+            cases: Math.floor(e * targets.cases),
+            critical: Math.floor(e * targets.critical),
+            events: Math.floor(e * targets.events),
+          });
+          if (p < 1) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+
+        if (data.projects && data.projects.length > 0) {
+          setTicker(data.projects.slice(0, 8).map(pr => ({
+            text: `${pr.currentRiskLevel.toUpperCase()} · $${pr.tokenSymbol} (${pr.chain}) — Risk ${pr.currentRiskScore}/100 · ${pr.holderCount.toLocaleString()} holders`,
+            type: pr.currentRiskLevel === 'critical' ? 'alert' : pr.currentRiskLevel === 'high' ? 'warn' : '',
+          })));
+        }
+      })
+      .catch(() => { /* placeholder ticker stays */ });
+    return () => { cancelled = true; };
   }, []);
 
   return (
@@ -134,12 +155,11 @@ export default function Landing() {
         <div style={{ position: 'relative', zIndex: 2, display: 'flex', gap: 0, borderTop: '1px solid rgba(255,255,255,0.07)', margin: '0 40px' }}>
           {[
             { val: counts.projects.toLocaleString(), label: 'Projects Monitored' },
-            { val: counts.cases.toString(), label: 'Active Forensic Cases' },
-            { val: counts.accuracy + '%', label: 'Detection Accuracy' },
-            { val: '$' + counts.value + 'M', label: 'Value Protected' },
-            { val: counts.latency + 'ms', label: 'Avg Alert Latency' },
+            { val: counts.cases.toString(), label: 'Open Forensic Cases' },
+            { val: counts.critical.toString(), label: 'Critical-Risk Projects' },
+            { val: counts.events.toLocaleString(), label: 'Onchain Events Indexed' },
           ].map((s, i) => (
-            <div key={i} style={{ flex: 1, padding: '28px 0', borderRight: i < 4 ? '1px solid rgba(255,255,255,0.07)' : 'none', paddingLeft: i > 0 ? 28 : 0 }}>
+            <div key={i} style={{ flex: 1, padding: '28px 0', borderRight: i < 3 ? '1px solid rgba(255,255,255,0.07)' : 'none', paddingLeft: i > 0 ? 28 : 0 }}>
               <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em', marginBottom: 4 }}>{s.val}</div>
               <div style={{ fontFamily: 'Geist Mono, monospace', fontSize: 10, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase' }}>{s.label}</div>
             </div>
@@ -150,7 +170,7 @@ export default function Landing() {
       {/* TICKER */}
       <div style={{ overflow: 'hidden', borderTop: '1px solid rgba(255,255,255,0.07)', borderBottom: '1px solid rgba(255,255,255,0.07)', padding: '13px 0', background: 'rgba(12,14,20,1)' }}>
         <div style={{ display: 'flex', gap: 60, animation: 'ticker 40s linear infinite', width: 'max-content' }}>
-          {[...TICKER_ITEMS, ...TICKER_ITEMS].map((t, i) => (
+          {[...ticker, ...ticker].map((t, i) => (
             <span key={i} style={{ fontFamily: 'Geist Mono, monospace', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: t.type === 'alert' ? '#ff3b3b' : t.type === 'warn' ? '#ffb300' : 'rgba(255,255,255,0.28)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 14 }}>
               <span style={{ fontSize: 5 }}>◆</span>{t.text}
             </span>
@@ -181,7 +201,7 @@ export default function Landing() {
       {/* RISK TIERS */}
       <section style={{ background: '#0c0e14', padding: '120px 40px' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-          <div style={{ fontFamily: 'Geist Mono, monospace', fontSize: 11, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', marginBottom: 16 }}>Risk Classification System</div>
+          <div style={{ fontFamily: 'Geist Mono, monospace', fontSize: 11, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', marginBottom: 16 }}>Risk Classification System · Example signals</div>
           <h2 style={{ fontSize: 'clamp(36px, 5vw, 64px)', fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1, marginBottom: 64 }}>FOUR TIERS.<br /><span style={{ color: 'rgba(255,255,255,0.28)' }}>ONE VERDICT.</span></h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: 'rgba(255,255,255,0.07)' }}>
             {RISK_TIERS.map(t => (
@@ -220,7 +240,7 @@ export default function Landing() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, background: 'rgba(255,255,255,0.07)' }}>
           <div style={{ background: '#080a0f', padding: 48 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
-              <span style={{ fontFamily: 'Geist Mono, monospace', fontSize: 10, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase' }}>Case FCS-2847 · Auto-triggered</span>
+              <span style={{ fontFamily: 'Geist Mono, monospace', fontSize: 10, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase' }}>Illustrative scenario · Example case</span>
               <span style={{ fontFamily: 'Geist Mono, monospace', fontSize: 9, padding: '4px 10px', background: 'rgba(255,59,59,0.12)', border: '1px solid rgba(255,59,59,0.25)', color: '#ff3b3b', textTransform: 'uppercase', letterSpacing: '0.12em' }}>CRITICAL</span>
             </div>
             <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.01em', marginBottom: 16, lineHeight: 1.1 }}>Coordinated Exit Detected:<br />$RUGX Rug Pull Pattern</div>
@@ -230,7 +250,7 @@ export default function Landing() {
             </Link>
           </div>
           <div style={{ background: '#080a0f', padding: 48 }}>
-            <div style={{ fontFamily: 'Geist Mono, monospace', fontSize: 9, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', marginBottom: 16 }}>Incident Timeline</div>
+            <div style={{ fontFamily: 'Geist Mono, monospace', fontSize: 9, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', marginBottom: 16 }}>Incident Timeline · Illustrative</div>
             {[
               { dot: '#00e5ff', time: 'T-18h · Pair Creation', desc: '$RUGX/ETH pair created. Deployer seeds 12 ETH liquidity. First 23 buy transactions execute within 4 minutes.' },
               { dot: '#ffb300', time: 'T-12h · Concentration Spike', desc: 'Top-5 wallets accumulate 78% of supply. All trace to single funding origin. Risk score escalates to HIGH (74).' },
@@ -253,7 +273,7 @@ export default function Landing() {
       {/* GOVERNANCE SECTION */}
       <section id="governance" style={{ padding: '120px 40px', background: '#0c0e14' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-          <div style={{ fontFamily: 'Geist Mono, monospace', fontSize: 11, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', marginBottom: 16 }}>Governance Trust Intelligence</div>
+          <div style={{ fontFamily: 'Geist Mono, monospace', fontSize: 11, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', marginBottom: 16 }}>Governance Trust Intelligence · Example output</div>
           <h2 style={{ fontSize: 'clamp(36px, 5vw, 56px)', fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1, marginBottom: 60 }}>DECENTRALIZATION<br /><span style={{ color: 'rgba(255,255,255,0.28)' }}>IS A CLAIM. VERIFY IT.</span></h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 1, background: 'rgba(255,255,255,0.07)' }}>
             {[

@@ -18,20 +18,28 @@ export default function Home() {
   const esRef = useRef<EventSource|null>(null);
 
   useEffect(() => {
-    fetch('/api/projects').then(r => r.json()).then(d => {
+    const load = () => fetch('/api/projects').then(r => r.json()).then(d => {
       setProjects(d.projects || []);
       setStats(d.stats || {});
       setLoading(false);
-    });
+    }).catch(() => setLoading(false));
+    load();
+    // Keep the dashboard fresh — worker/stream writes land in the store
+    const refresh = setInterval(load, 30_000);
+
     const es = new EventSource('/api/stream');
     esRef.current = es;
+    const seenEvents = new Set<string>();
     es.onmessage = (e) => {
       try {
         const ev = JSON.parse(e.data);
+        // The SSE window reconnects periodically; dedupe replayed events
+        if (ev.id && seenEvents.has(ev.id)) return;
+        if (ev.id) seenEvents.add(ev.id);
         setEvents(prev => [ev, ...prev].slice(0, 30));
       } catch {}
     };
-    return () => es.close();
+    return () => { es.close(); clearInterval(refresh); };
   }, []);
 
   const filteredProjects = activeMode === 'forensic'
@@ -80,8 +88,8 @@ export default function Home() {
             </span>
           ))}
           {/* Static fallback */}
-          {events.length === 0 && ['$RUGX — Forensic case FCS-2847 OPEN · 97% confidence', '$MOONFI — Holder concentration 61% · High risk', '$GOVTKN — 3 wallets control 91% of votes', 'GoldRush streaming — Connected · Monitoring active'].map((t,i) => (
-            <span key={`s${i}`} style={{ fontFamily:'Geist Mono,monospace', fontSize:10, letterSpacing:'0.1em', textTransform:'uppercase', color:i===0?'var(--red)':i===1?'var(--amber)':'var(--text3)', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:12 }}><span style={{fontSize:5}}>◆</span>{t}</span>
+          {events.length === 0 && ['Connecting to live intelligence feed…', 'Awaiting onchain events from GoldRush'].map((t,i) => (
+            <span key={`s${i}`} style={{ fontFamily:'Geist Mono,monospace', fontSize:10, letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text3)', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:12 }}><span style={{fontSize:5}}>◆</span>{t}</span>
           ))}
         </div>
       </div>

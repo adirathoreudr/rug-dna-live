@@ -59,7 +59,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         {/* AI Narrative */}
         {riskScore?.explanation && (
           <div style={{ background:'var(--bg2)', borderLeft:'3px solid var(--cyan)', padding:'20px 24px', marginBottom:32 }}>
-            <div style={{ fontFamily:'Geist Mono,monospace', fontSize:9, color:'var(--cyan)', letterSpacing:'0.2em', textTransform:'uppercase', marginBottom:10 }}>◈ AI Intelligence Summary</div>
+            <div style={{ fontFamily:'Geist Mono,monospace', fontSize:9, color:'var(--cyan)', letterSpacing:'0.2em', textTransform:'uppercase', marginBottom:10 }}>◈ Intelligence Summary</div>
             <div style={{ fontFamily:'Geist Mono,monospace', fontSize:12, color:'var(--text2)', lineHeight:1.7 }}>{riskScore.explanation}</div>
           </div>
         )}
