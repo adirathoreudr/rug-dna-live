@@ -10,7 +10,7 @@ export async function GET(req: Request) {
   const riskFilter = searchParams.get('risk');
   const chain = searchParams.get('chain');
 
-  let projects = db.getAllProjects();
+  let projects = await db.getAllProjects();
 
   if (riskFilter) {
     projects = projects.filter(p => p.currentRiskLevel === riskFilter);
@@ -22,7 +22,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     projects,
     total: projects.length,
-    stats: db.getStats(),
+    stats: await db.getStats(),
     lastUpdated: Date.now(),
   });
 }

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@covalenthq/client-sdk": "^3.0.6",
+    "@neondatabase/serverless": "^1.1.0",
     "clsx": "^2.1.1",
     "cytoscape": "^3.33.3",
     "framer-motion": "^12.38.0",

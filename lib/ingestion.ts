@@ -38,6 +38,8 @@ const LIVE_PROJECTS: Array<{ tokenAddress: string; chain: string; pairAddress?: 
 // ─── INIT — fetch live data on startup ───────────────────────
 export async function seedMockData() {
   if (initialized) return;
+  // With a persistent store, seed only when the database is empty
+  if (db.isPersistent() && (await db.countProjects()) > 0) { initialized = true; return; }
   initialized = true;
 
   if (!hasApiKey()) {
@@ -62,7 +64,7 @@ export async function seedMockData() {
 export async function ingestProject(tokenAddress: string, chain: Chain): Promise<Project | null> {
   try {
     // Check if already tracked
-    const existing = db.getProjectByToken(tokenAddress);
+    const existing = await db.getProjectByToken(tokenAddress);
     if (existing) return existing;
 
     // One call: holders + token metadata + total holder count.
@@ -107,13 +109,13 @@ export async function ingestProject(tokenAddress: string, chain: Chain): Promise
       holderCount: holdersPage.totalHolderCount ?? holders.length,
       totalSupply: meta.total_supply,
     };
-    db.upsertProject(project);
+    await db.upsertProject(project);
 
     // Normalize transactions to events
     const events: NormalizedEvent[] = txs.map(tx =>
       normalizeTxToEvent(tx, projectId, chain, detectEventType(tx))
     );
-    for (const ev of events) db.insertEvent(ev);
+    await Promise.all(events.map(ev => db.insertEvent(ev)));
 
     // Build wallets from holder data — only fields actually observed
     const now = Date.now();
@@ -128,13 +130,13 @@ export async function ingestProject(tokenAddress: string, chain: Chain): Promise
       labels: [],
       balance: h.balance,
     }));
-    for (const w of wallets) db.upsertWallet(w);
+    await Promise.all(wallets.map(w => db.upsertWallet(w)));
 
     // Deployer wallet + prior contract deployments (reuse signal).
     // Contract-creation txs have no to_address.
     let deployerTxHistory: string[] = [];
     if (deployerAddress) {
-      db.upsertWallet({
+      await db.upsertWallet({
         address: deployerAddress,
         chain,
         firstSeen: createdAt,
@@ -184,19 +186,21 @@ export async function ingestProject(tokenAddress: string, chain: Chain): Promise
       liquidityEvents,
     };
     const riskScore = computeRiskScore(riskInput);
-    db.upsertRiskScore(riskScore);
+    await db.upsertRiskScore(riskScore);
 
     project.currentRiskScore = riskScore.score;
     project.currentRiskLevel = riskScore.level;
     project.confidence = riskScore.confidence;
     project.evidenceSummary = riskScore.explanation.slice(0, 140);
     project.updatedAt = Date.now();
-    db.upsertProject(project);
+    await db.upsertProject(project);
 
     // Graph
     const { nodes, edges } = buildGraph({ project, wallets, events, deployerAddress: project.deployerAddress });
-    for (const n of nodes) db.upsertGraphNode(n);
-    for (const e of edges) db.upsertGraphEdge(e);
+    await Promise.all([
+      ...nodes.map(n => db.upsertGraphNode(n)),
+      ...edges.map(e => db.upsertGraphEdge(e)),
+    ]);
 
     // Forensic — loss estimate derives from observed liquidity
     // removals; no invented figures
@@ -210,9 +214,9 @@ export async function ingestProject(tokenAddress: string, chain: Chain): Promise
         victimWallets: wallets.filter(w => !w.isSuspicious).map(w => w.address).slice(0, 20),
         estimatedLossUsd: realizedRemovalUsd,
       });
-      db.upsertForensicCase(fc);
+      await db.upsertForensicCase(fc);
       project.forensicCaseId = fc.id;
-      db.upsertProject(project);
+      await db.upsertProject(project);
     }
 
     // Governance
@@ -223,12 +227,12 @@ export async function ingestProject(tokenAddress: string, chain: Chain): Promise
       totalSupply: meta.total_supply,
     };
     const govScore = computeGovernanceScore(govInput);
-    db.upsertGovernanceScore(govScore);
+    await db.upsertGovernanceScore(govScore);
     project.governanceScoreId = govScore.id;
-    db.upsertProject(project);
+    await db.upsertProject(project);
 
     // Push live event
-    db.pushLiveEvent({
+    await db.pushLiveEvent({
       id: nanoid(),
       projectId,
       tokenSymbol: project.tokenSymbol,
@@ -274,7 +278,7 @@ async function discoverNewLaunches() {
     }
 
     if (newTokens.length > 0) {
-      db.pushLiveEvent({
+      await db.pushLiveEvent({
         id: nanoid(),
         projectId: 'system',
         tokenSymbol: 'SCAN',
@@ -331,8 +335,8 @@ async function seedFallback() {
       holderCount: f.holders,
       totalSupply: '1000000000000000000000000000',
     };
-    db.upsertProject(project);
-    db.pushLiveEvent({
+    await db.upsertProject(project);
+    await db.pushLiveEvent({
       id: nanoid(), projectId: id, tokenSymbol: f.sym,
       eventType: 'pair_created', severity: f.score > 65 ? 'warning' : 'info',
       message: `[NO API KEY] $${f.sym} on ${f.chain} — Add GOLDRUSH_API_KEY for live data`,

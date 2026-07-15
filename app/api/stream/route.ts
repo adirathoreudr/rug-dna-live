@@ -22,7 +22,7 @@ export async function GET(req: Request) {
       };
 
       // Push existing events first
-      const existing = db.getLiveEvents(undefined, 15);
+      const existing = await db.getLiveEvents(undefined, 15);
       for (const ev of existing) send(ev);
 
       // Poll for new events every 8s
@@ -31,7 +31,7 @@ export async function GET(req: Request) {
         ticks++;
 
         // Every tick: push latest db events
-        const latest = db.getLiveEvents(undefined, 3);
+        const latest = await db.getLiveEvents(undefined, 3);
         for (const ev of latest.slice(0, 2)) send(ev);
 
         // Every 3rd tick: scan for new launches (if API key present)
@@ -57,11 +57,11 @@ export async function GET(req: Request) {
                 message: `New pair detected on ${chain}: $${p.token0_contract_ticker_symbol ?? addr.slice(0, 10)} — Analyzing...`,
                 timestamp: Date.now(),
               };
-              db.pushLiveEvent(discoveryEvent);
+              await db.pushLiveEvent(discoveryEvent);
               send(discoveryEvent);
 
               // Ingest async (don't await — don't block stream)
-              ingestProject(addr, chain as Chain).then(proj => {
+              ingestProject(addr, chain as Chain).then(async proj => {
                 if (!proj) return;
                 const ev: LiveEvent = {
                   id: nanoid(),
@@ -72,7 +72,7 @@ export async function GET(req: Request) {
                   message: `$${proj.tokenSymbol} scored ${proj.currentRiskScore}/100 · ${proj.currentRiskLevel.toUpperCase()} · ${proj.holderCount} holders · ${chain}`,
                   timestamp: Date.now(),
                 };
-                db.pushLiveEvent(ev);
+                await db.pushLiveEvent(ev);
                 send(ev);
               });
             }
