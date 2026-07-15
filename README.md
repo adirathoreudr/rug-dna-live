@@ -8,122 +8,103 @@
 
 ## ⚡ TLDR
 
-**RUG DNA** is an AI-powered onchain surveillance platform that monitors token launches in real time, scores them for rug-pull risk (0–100), auto-generates forensic case files when a project breaches a critical threshold, and evaluates DAO governance health — all powered by the **GoldRush / Covalent API** (`@covalenthq/client-sdk`).
+**RUG DNA** is an onchain surveillance platform that monitors token launches in real time, scores them for rug-pull risk (0–100), auto-generates forensic case files when a project breaches a critical threshold, and evaluates DAO governance health — powered end-to-end by the **GoldRush APIs** (`@covalenthq/client-sdk`).
 
 | Capability | What it does |
 |---|---|
 | 🔴 Risk Scoring | Heuristic engine scores each token 0–100 across 6 signal categories |
-| 🔬 Forensic Mode | Auto-generates case files with timeline, extraction path & AI narrative |
-| 🏛 Governance Trust | Decentralization credibility score for DAOs |
-| 📡 Live Feed | SSE stream of real-time alerts from GoldRush data |
+| 🔬 Forensic Mode | Auto-generates case files with timeline & extraction path built strictly from observed onchain events |
+| 🏛 Governance Trust | Decentralization credibility score from real holder distribution |
+| 📡 Live Feed | Streaming worker consumes GoldRush `newPairs`/`updatePairs` and feeds an SSE ticker |
 
 ---
 
 ## 🏗 Architecture
 
-![RUG DNA Architecture Diagram](./public/architecture.png)
-
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                      GoldRush APIs                           │
-│  Token Holders · Wallet Txns · Balances · Token Transfers    │
-└──────────────────┬───────────────────────────────────────────┘
-                   │ @covalenthq/client-sdk
-                   ▼
-          ┌─────────────────┐
-          │  lib/goldrush.ts │  ← Normalized API wrapper
-          └────────┬────────┘
-                   │
-       ┌───────────┼────────────────────┐
-       ▼           ▼                    ▼
- risk-engine  graph-builder        ingestion.ts
-    .ts           .ts               (pipeline)
-       │           │                    │
-       │      forensic-engine      governance-engine
-       │          .ts                  .ts
-       └───────────┴──────────────────┘
-                   │
-             lib/db.ts (in-memory store)
-                   │
-          Next.js API Routes
-                   │
-     ┌─────────────┼───────────────────┐
-     ▼             ▼                   ▼
-/api/projects  /api/stream        /api/forensic
-/api/governance                  /project/[id]
-     │
-     ▼
-Next.js 15 Frontend (React 19)
-Tailwind CSS · Recharts · Cytoscape · Framer Motion
+┌────────────────────────────────────────────────────────────────┐
+│                        GoldRush APIs                           │
+│  Foundational REST (holders · txs · balances)                  │
+│  Streaming GraphQL/WS (newPairs · updatePairs)                 │
+└──────────┬──────────────────────────────┬──────────────────────┘
+           │ @covalenthq/client-sdk       │ @covalenthq/client-sdk
+           ▼                              ▼
+   ┌──────────────────┐        ┌─────────────────────────┐
+   │  lib/goldrush.ts │        │ worker/stream-worker.ts │
+   │  (REST client)   │        │ (always-on WS consumer) │
+   └────────┬─────────┘        └───────────┬─────────────┘
+            │                              │
+     risk-engine · graph-builder · forensic-engine · governance-engine
+            │                              │
+            └──────────┬───────────────────┘
+                       ▼
+              lib/db.ts — Postgres (Neon)
+              (in-memory fallback for local dev)
+                       │
+              Next.js 16 API routes
+   /api/projects · /api/stream (SSE reader) · /api/forensic · /api/governance
+                       │
+              Next.js 16 Frontend (React 19)
 ```
 
----
+Two processes share one Postgres store:
+
+1. **The Next.js app** (Vercel) — serves the UI and API routes; on first request it seeds a watchlist of well-known tokens via the Foundational REST API.
+2. **The streaming worker** (any always-on Node host — Railway/Render/Fly) — holds the GoldRush Streaming WebSocket, ingests newly created DEX pairs on Ethereum and Solana, watches their liquidity in real time, and writes rug-pull alerts into the store. Serverless functions can't hold a WebSocket, which is why this is a separate process.
 
 ## 🔗 GoldRush Integration
 
-RUG DNA is deeply integrated with **GoldRush by Covalent** for all onchain data.
+### Foundational REST (EVM chains)
 
-### APIs Used
+| SDK call | Purpose |
+|---|---|
+| `BalanceService.getTokenHoldersV2ForTokenAddressByPage` | Holder concentration + token metadata (one call) |
+| `TransactionService.getEarliestTransactionsForAddress` | Real deployer + launch date + genuine early buyers |
+| `TransactionService.getAllTransactionsForAddressByPage` | Recent activity + deployer contract-creation history |
+| `BalanceService.getTokenBalancesForWalletAddress` | Wallet balances (works on Solana, base58) |
 
-| Endpoint | GoldRush Function | Purpose |
-|---|---|---|
-| `/{chain}/tokens/{addr}/token_holders_v2/` | `getTokenHolders()` | Holder concentration analysis |
-| `/{chain}/address/{addr}/transactions_v3/` | `getWalletTransactions()` | Fund-flow graph construction |
-| `/{chain}/address/{addr}/balances_v2/` | `getWalletBalances()` | Wallet wealth profiling |
-| `/{chain}/address/{addr}/transfers_v2/` | `getTokenTransfers()` | Transfer pattern detection |
-| `/{chain}/tokens/{addr}/` | `getTokenMetadata()` | Token name, symbol, supply |
-| `/{chain}/xy=k/{dex}/pools/` | `getDexPools()` | Liquidity pool analysis |
+Holder share is computed from `balance / total_supply`. Errors (rate limits, outages) are distinguished from empty results so a failed fetch can never masquerade as a low-risk score.
 
-### SDK Usage
+### Streaming API (real-time; Ethereum + Solana)
 
-```ts
-// lib/goldrush.ts
-import { GoldRushClient } from '@covalenthq/client-sdk';
+| Subscription | Purpose |
+|---|---|
+| `newPairs` | Launch discovery — carries deployer, initial liquidity, market cap, token metadata |
+| `updatePairs` | Live liquidity/price — a >50% liquidity drop raises a critical alert and re-scores the project |
 
-const client = new GoldRushClient(process.env.GOLDRUSH_API_KEY!);
+Solana REST coverage is balances-only, so all Solana intelligence is streaming-first by design.
 
-// Example: fetch top 100 token holders
-const holders = await getTokenHolders('eth-mainnet', tokenAddress, 100);
-```
-
-### Risk Signals from GoldRush Data
-
-The **Risk Engine** (`lib/risk-engine.ts`) extracts 6 categories of risk signals:
+### Risk signals
 
 ```
-┌─────────────────────────────┬──────────────────────────────────────┐
-│ Signal Category              │ GoldRush Data Used                   │
-├─────────────────────────────┼──────────────────────────────────────┤
-│ Holder Concentration         │ token_holders_v2 → top-10 balance %  │
-│ Deployer Behavior            │ transactions_v3 → deployer patterns   │
-│ Liquidity Depth              │ xy=k pools → total_liquidity_quote   │
-│ Transfer Velocity            │ transfers_v2 → tx frequency spike    │
-│ Mint/Burn Anomalies          │ transfers_v2 → mint events           │
-│ Wallet Graph Clustering      │ balances_v2 → cross-wallet links     │
-└─────────────────────────────┴──────────────────────────────────────┘
+┌──────────────────────────────┬───────────────────────────────────────┐
+│ Signal                       │ Data source                           │
+├──────────────────────────────┼───────────────────────────────────────┤
+│ Deployer reuse               │ earliest txs → deployer → creations   │
+│ Holder concentration         │ token_holders_v2 (computed %)         │
+│ Liquidity removal            │ updatePairs stream + decoded logs     │
+│ Transfer velocity            │ transactions_v3                       │
+│ Liquidity lock               │ decoded log events                    │
+│ Early-buyer clustering       │ earliest txs (funding trace: roadmap) │
+└──────────────────────────────┴───────────────────────────────────────┘
 ```
 
-### Adding a Real Token
-
-```bash
-curl -X POST http://localhost:3000/api/projects \
-  -H "Content-Type: application/json" \
-  -d '{"tokenAddress": "0xYourToken", "chain": "eth-mainnet"}'
-```
+**Data honesty:** nothing in the UI is fabricated. Forensic timelines, extraction paths, and loss estimates derive only from observed onchain events; landing-page counters are live store stats; explicitly illustrative marketing examples are labeled as such. When a signal has no data source yet (e.g. Solana holder concentration), it is excluded from scoring rather than faked.
 
 ---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 18+
-- A [GoldRush API Key](https://goldrush.dev) (free tier available)
+- Node.js 22+
+- A [GoldRush API key](https://goldrush.dev) (free tier available)
+- Optional: a Postgres database ([Neon](https://neon.tech) free tier) — without it the app runs on an in-memory store (fine locally, required in production)
 
 ### Installation
 
 ```bash
 git clone https://github.com/adirathoreudr/rug-dna-live.git
-cd rug-dna-app
+cd rug-dna-live
 npm install
 cp .env.example .env.local
 ```
@@ -131,108 +112,86 @@ cp .env.example .env.local
 Edit `.env.local`:
 ```env
 GOLDRUSH_API_KEY=your_key_from_goldrush.dev
+DATABASE_URL=postgres://...   # optional locally
 ```
 
 ```bash
-npm run dev
+npm run dev        # the web app → http://localhost:3000
+npm run worker     # optional: the streaming worker (needs DATABASE_URL)
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+### Adding a token to the watchlist
+
+```bash
+curl -X POST http://localhost:3000/api/projects \
+  -H "Content-Type: application/json" \
+  -d '{"tokenAddress": "0xYourToken", "chain": "eth-mainnet"}'
+```
+
+Requests are validated (address format, chain whitelist) and rate-limited.
+
+---
+
+## ☁️ Deploy
+
+**Web app (Vercel)**
+1. Import the repo at [vercel.com](https://vercel.com) — framework auto-detected.
+2. Environment variables: `GOLDRUSH_API_KEY`, `DATABASE_URL`.
+3. Deploy.
+
+**Streaming worker (Railway / Render / Fly)**
+1. Create a service from this repo.
+2. Start command: `npm run worker` (Node 22+).
+3. Environment variables: `GOLDRUSH_API_KEY`, `DATABASE_URL` (same database as the web app).
 
 ---
 
 ## 🗂 Project Structure
 
 ```
-rug-dna-app/
+rug-dna-live/
 ├── app/
-│   ├── page.tsx              # Risk Monitor dashboard (main view)
-│   ├── layout.tsx            # Root layout + fonts
-│   ├── globals.css           # Design tokens, animations
+│   ├── page.tsx              # Landing (live stats from the store)
+│   ├── dashboard/            # Intelligence console
 │   ├── api/
-│   │   ├── projects/route.ts # GET all projects / POST ingest token
-│   │   ├── stream/route.ts   # SSE live intelligence feed
-│   │   ├── forensic/route.ts # Forensic case files
-│   │   └── governance/route.ts
-│   ├── project/[id]/         # Project detail page
-│   ├── case/[id]/            # Full forensic case file view
-│   └── governance/           # Governance analysis view
-│
+│   │   ├── projects/         # GET list / POST ingest (validated + rate-limited)
+│   │   ├── stream/           # SSE reader over the shared store
+│   │   ├── forensic/         # Case files
+│   │   ├── governance/       # Governance scores
+│   │   └── solana/           # Solana view
+│   ├── project/[id]/         # Project detail
+│   ├── case/[id]/            # Forensic case file
+│   └── governance/[id]/      # Governance analysis
 ├── lib/
-│   ├── goldrush.ts           # ← GoldRush API client (all data fetching)
-│   ├── risk-engine.ts        # Heuristic 0–100 risk scorer
-│   ├── graph-builder.ts      # Wallet behavioral graph (Cytoscape)
-│   ├── forensic-engine.ts    # Auto case file generation
-│   ├── governance-engine.ts  # DAO trust scoring
-│   ├── ingestion.ts          # Data pipeline + mock seeding
-│   └── db.ts                 # In-memory data store
-│
-├── components/               # UI components
-├── types/                    # TypeScript type definitions
-├── public/
-│   ├── dashboard-preview.png # Dashboard screenshot
-│   └── architecture.png      # Architecture diagram
-├── .env.example              # Environment variable template
-└── vercel.json               # Vercel deployment config
+│   ├── goldrush.ts           # GoldRush REST client (official SDK)
+│   ├── db.ts                 # Postgres (Neon) store + in-memory fallback
+│   ├── risk-engine.ts        # 0–100 heuristic risk scorer
+│   ├── forensic-engine.ts    # Case files from observed events only
+│   ├── governance-engine.ts  # Distribution-based trust scoring
+│   ├── graph-builder.ts      # Wallet behavioral graph
+│   └── ingestion.ts          # REST ingestion pipeline
+├── worker/
+│   └── stream-worker.ts      # GoldRush Streaming consumer (always-on)
+└── types/                    # Shared TypeScript definitions
 ```
-
----
 
 ## 🛠 Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Framework | Next.js 15 (App Router) |
+| Framework | Next.js 16 (App Router) · React 19 |
 | Language | TypeScript 5 |
+| Onchain data | **GoldRush** Foundational REST + Streaming (`@covalenthq/client-sdk`) |
+| Database | Postgres (Neon serverless driver), in-memory fallback |
 | Styling | Tailwind CSS 4 + custom design tokens |
-| Onchain Data | **GoldRush / Covalent** (`@covalenthq/client-sdk`) |
-| Graph Visualization | Cytoscape.js |
-| Charts | Recharts |
-| Animations | Framer Motion |
-| State | Zustand |
-| Deploy | Vercel |
-
----
-
-## ⚙️ Environment Variables
-
-Copy `.env.example` and fill in your keys:
-
-```env
-# Required — get from https://goldrush.dev (free)
-GOLDRUSH_API_KEY=cqt_your_key_here
-
-# Optional — for AI narrative generation
-ANTHROPIC_API_KEY=sk-ant-your_key_here
-
-# App URL (auto-set on Vercel)
-NEXT_PUBLIC_APP_URL=https://rug-dna-live.vercel.app
-```
-
-> **Note:** The app runs with mock data if no API key is provided (for demo purposes).
-
----
-
-## ☁️ Deploy on Vercel
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new)
-
-1. Repo is live at [github.com/adirathoreudr/rug-dna-live](https://github.com/adirathoreudr/rug-dna-live)
-2. Deployment is live at [rug-dna-live.vercel.app](https://rug-dna-live.vercel.app)
-3. To add your GoldRush key: go to [vercel.com](https://vercel.com) → Project → Settings → Environment Variables
-4. Framework: **Next.js** (auto-detected)
-5. Add environment variable: `GOLDRUSH_API_KEY = <your key>`
-6. Hit **Deploy** ✓
-
----
+| Worker runtime | Node 22 + tsx |
+| Deploy | Vercel (web) + any always-on Node host (worker) |
 
 ## 🔒 Security Notes
 
-- `.env.local` is in `.gitignore` — real API keys are never committed
-- `.env.example` contains only placeholder values
-- All GoldRush API calls are server-side (API routes) — no keys exposed to browser
-
----
+- Real keys live only in `.env.local` / host environment variables — `.env.example` contains placeholders only
+- All GoldRush calls are server-side; the key is sent via Bearer header only (never in URLs)
+- `POST /api/projects` validates input and rate-limits to protect API credits
 
 ## 📜 License
 
@@ -240,4 +199,4 @@ MIT © 2025
 
 ---
 
-*Built with ❤️ for the [GoldRush Hackathon Track](https://goldrush.dev) on Superteam Earn.*
+*Built for the [GoldRush Hackathon Track](https://goldrush.dev) on Superteam Earn.*

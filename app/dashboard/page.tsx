@@ -214,15 +214,23 @@ function AddProjectForm({ onAdded }: { onAdded: (p: Project) => void }) {
   const [addr, setAddr] = useState('');
   const [chain, setChain] = useState('eth-mainnet');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const handleSubmit = async () => {
     if (!addr) return;
-    setLoading(true);
-    const r = await fetch('/api/projects', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ tokenAddress: addr, chain }) });
-    const d = await r.json();
-    if (d.project) onAdded(d.project);
-    setAddr(''); setLoading(false);
+    setLoading(true); setError('');
+    try {
+      const r = await fetch('/api/projects', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ tokenAddress: addr, chain }) });
+      const d = await r.json();
+      if (d.project) { onAdded(d.project); setAddr(''); }
+      else setError(d.error || 'Failed to add project');
+    } catch {
+      setError('Network error — try again');
+    }
+    setLoading(false);
   };
   return (
+    <div>
+    {error && <div style={{ fontFamily:'Geist Mono,monospace', fontSize:10, color:'var(--red)', marginBottom:8 }}>{error}</div>}
     <div style={{ display:'flex', gap:8 }}>
       <input value={addr} onChange={e => setAddr(e.target.value)} placeholder="Token contract address (0x...)"
         style={{ flex:1, padding:'8px 12px', background:'var(--bg3)', border:'1px solid var(--border2)', color:'var(--text)', fontFamily:'Geist Mono,monospace', fontSize:11, outline:'none' }} />
@@ -237,6 +245,7 @@ function AddProjectForm({ onAdded }: { onAdded: (p: Project) => void }) {
         style={{ padding:'8px 16px', background: loading ? 'var(--surface2)' : 'var(--text)', color:'var(--bg)', fontFamily:'Geist Mono,monospace', fontSize:11, border:'none', cursor:'pointer', letterSpacing:'0.1em' }}>
         {loading ? '...' : 'ADD'}
       </button>
+    </div>
     </div>
   );
 }

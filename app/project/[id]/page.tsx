@@ -156,7 +156,7 @@ function GraphTab({ graph, project }: { graph: { nodes: GraphNode[]; edges: Grap
   const W = 800, H = 400;
   const nodeMap = new Map<string, GraphNode>(nodes.map((n: GraphNode) => [n.id, n]));
   const getColor = (n: GraphNode) => {
-    const meta = n.metadata as Record<string, any>;
+    const meta = n.metadata as Record<string, unknown>;
     if (meta.isDeployer) return '#ff3b3b';
     if (n.nodeType === 'token') return '#00e5ff';
     if (n.nodeType === 'liquidity_event') return '#ffb300';
@@ -239,13 +239,13 @@ function WalletsTab({ graph }: { graph: { nodes: GraphNode[] } }) {
       <table className="data-table">
         <thead><tr><th>Address</th><th>Role</th><th>Risk</th><th>Cluster</th><th>Signals</th></tr></thead>
         <tbody>
-          {wallets.slice(0,20).map((n: any) => (
+          {wallets.slice(0,20).map((n: GraphNode) => (
             <tr key={n.id}>
               <td><span className="wallet-addr" style={{ fontFamily:'Geist Mono,monospace', fontSize:11, color:'var(--cyan)' }}>{n.address?.slice(0,10)}...{n.address?.slice(-6)}</span></td>
               <td style={{ color: n.metadata?.isDeployer ? 'var(--red)' : 'var(--text2)' }}>{n.metadata?.isDeployer ? 'Deployer' : n.metadata?.isSuspicious ? 'Cluster Member' : 'Buyer'}</td>
               <td style={{ color: n.riskScore > 60 ? 'var(--red)' : n.riskScore > 30 ? 'var(--amber)' : 'var(--green)' }}>{n.riskScore}</td>
               <td style={{ color:'var(--text3)' }}>{n.clusterId || '—'}</td>
-              <td>{(n.metadata?.labels || []).map((l: string) => <span key={l} className="badge badge-moderate" style={{ marginRight:4 }}>{l}</span>)}</td>
+              <td>{((n.metadata?.labels as string[] | undefined) || []).map((l: string) => <span key={l} className="badge badge-moderate" style={{ marginRight:4 }}>{l}</span>)}</td>
             </tr>
           ))}
         </tbody>
