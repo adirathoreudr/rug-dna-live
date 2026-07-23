@@ -48,6 +48,7 @@ export interface Project {
   totalSupply: string;
   marketCap?: number;
   liquidity?: number;
+  isDemo?: boolean; // seeded placeholder shown when no API key is configured
 }
 
 export interface Wallet {
