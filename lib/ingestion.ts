@@ -38,15 +38,22 @@ const LIVE_PROJECTS: Array<{ tokenAddress: string; chain: string; pairAddress?: 
 // ─── INIT — fetch live data on startup ───────────────────────
 export async function seedMockData() {
   if (initialized) return;
-  // With a persistent store, seed only when the database is empty
-  if (db.isPersistent() && (await db.countProjects()) > 0) { initialized = true; return; }
-  initialized = true;
 
   if (!hasApiKey()) {
+    // No key: seed demo placeholders once if the store is empty.
+    if (db.isPersistent() && (await db.countProjects()) > 0) { initialized = true; return; }
+    initialized = true;
     console.warn('RUG DNA: No GoldRush API key — add GOLDRUSH_API_KEY to .env.local');
     await seedFallback();
     return;
   }
+
+  // Key present: skip only if REAL data already exists. If the store
+  // holds nothing but demo placeholders (seeded before the key was
+  // configured), purge them and ingest live data instead.
+  if (db.isPersistent() && (await db.countRealProjects()) > 0) { initialized = true; return; }
+  initialized = true;
+  await db.purgeDemo();
 
   // Ingest all live projects; awaited so the first request that
   // triggers seeding actually returns data instead of an empty list
@@ -334,6 +341,7 @@ async function seedFallback() {
       evidenceSummary: `Live GoldRush data requires API key. Add GOLDRUSH_API_KEY to .env.local`,
       holderCount: f.holders,
       totalSupply: '1000000000000000000000000000',
+      isDemo: true,
     };
     await db.upsertProject(project);
     await db.pushLiveEvent({

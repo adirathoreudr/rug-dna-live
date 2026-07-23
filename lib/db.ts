@@ -89,6 +89,33 @@ export const db = {
     return mem.projects.size;
   },
 
+  // Count only real (non-demo) projects. Lets seeding re-run with a
+  // real key even when the store already holds demo placeholders.
+  async countRealProjects(): Promise<number> {
+    if (sql) {
+      await ensureSchema();
+      const rows = await sql`SELECT count(*)::int AS n FROM rd_projects WHERE (data->>'isDemo') IS DISTINCT FROM 'true'`;
+      return rows[0]?.n ?? 0;
+    }
+    return Array.from(mem.projects.values()).filter(p => !p.isDemo).length;
+  },
+
+  // Remove demo placeholders (and their live-event rows) so real
+  // data can take their place once an API key is configured.
+  async purgeDemo(): Promise<void> {
+    if (sql) {
+      await ensureSchema();
+      await sql`DELETE FROM rd_projects WHERE (data->>'isDemo') = 'true'`;
+      await sql`DELETE FROM rd_live_events WHERE (data->>'projectId') IN (SELECT id FROM rd_projects WHERE (data->>'isDemo') = 'true')`;
+      return;
+    }
+    for (const [id, p] of mem.projects) if (p.isDemo) mem.projects.delete(id);
+    mem.liveEvents = mem.liveEvents.filter(e => {
+      const p = mem.projects.get(e.projectId);
+      return !p || !p.isDemo;
+    });
+  },
+
   async upsertProject(project: Project): Promise<void> {
     const p = { ...project, updatedAt: Date.now() };
     if (sql) {
