@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 
 type Project = { id: string; tokenSymbol: string; tokenName: string; chain: string; currentRiskScore: number; currentRiskLevel: string; confidence: number; holderCount: number; forensicCaseId?: string; updatedAt: number; };
-const RISK_COLOR: Record<string, string> = { critical:'#ff3b3b', high:'#ff7a00', moderate:'#ffb300', low:'#00ff88' };
+type LiveEvent = { id: string; tokenSymbol: string; severity: string; message: string; timestamp: number; };
 type Stats = { totalProjects: number; critical: number; high: number; openCases: number; };
 
 const RISK_COLOR: Record<string,string> = { critical:'#ff3b3b', high:'#ff7a00', moderate:'#ffb300', low:'#00ff88' };

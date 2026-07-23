@@ -1,4 +1,4 @@
-// RUG DNA — Live Data Ingestion Pipeline (NO MOCK DATA)
+// ============================================================
 // RUG DNA — Live Data Ingestion Pipeline (NO MOCK DATA)
 // Sources: Ethereum, Base, Matic, Solana via GoldRush
 // ============================================================
@@ -7,7 +7,7 @@ import type { Project, Wallet, NormalizedEvent, RiskLevel, Chain, LiveEvent, GRT
 import db from './db';
 import { nanoid } from './utils';
 import {
-} from './goldrush';
+  getTokenHolders, getWalletTransactions, getTokenMetadata,
   normalizeTxToEvent, hasApiKey, getNewDexPairs, getSolanaNewTokens,
   getSolanaTokenTransactions,
 } from './goldrush';
@@ -15,7 +15,7 @@ import { computeRiskScore } from './risk-engine';
 import { buildGraph } from './graph-builder';
 import { shouldTriggerForensic, generateForensicCase } from './forensic-engine';
 import { computeGovernanceScore } from './governance-engine';
-// ─── MONITORED PROJECTS (real contracts across chains) ───────
+
 let initialized = false;
 
 // ─── MONITORED PROJECTS (real contracts across chains) ───────
