@@ -39,12 +39,47 @@ if (!process.env.DATABASE_URL) {
 process.on('uncaughtException', (e) => console.error('worker: uncaught exception', e));
 process.on('unhandledRejection', (e) => console.error('worker: unhandled rejection', e));
 
+// When GoldRush rejects the streaming subscription for lack of
+// entitlement/credits, reconnecting is futile — it just burns host
+// compute and hammers the API. Detect that case and stop retrying.
+let streamingHalted = false;
+let creditErrorCount = 0;
+
+function isEntitlementError(err: unknown): boolean {
+  const s = JSON.stringify(err ?? '');
+  return s.includes('INSUFFICIENT_CREDITS') || s.includes('AUTHENTICATION_ERROR');
+}
+
+function handleSubscriptionError(scope: string, err: unknown): void {
+  if (isEntitlementError(err)) {
+    creditErrorCount++;
+    console.error(`worker: ${scope} rejected by GoldRush — INSUFFICIENT_CREDITS / streaming not entitled on this key`);
+    // Give it one retry in case of a transient blip, then halt.
+    if (creditErrorCount >= 2 && !streamingHalted) {
+      streamingHalted = true;
+      console.error(
+        '\n==================================================================\n' +
+        'worker: HALTING streaming subscriptions.\n' +
+        'The GoldRush Streaming API returned INSUFFICIENT_CREDITS. The\n' +
+        'newPairs/updatePairs subscriptions require streaming access/credits\n' +
+        'that this GOLDRUSH_API_KEY does not have. Enable the Streaming API\n' +
+        '(or top up credits) on your GoldRush plan, then redeploy.\n' +
+        'The Next.js app still serves real REST data for the seed tokens.\n' +
+        '==================================================================\n'
+      );
+      client.StreamingService.disconnect().catch(() => {});
+    }
+    return;
+  }
+  console.error(`worker: ${scope} error`, err);
+}
+
 // The SDK validates the key format synchronously at construction
 let client: GoldRushClient;
 try {
   client = new GoldRushClient(API_KEY, {}, {
     maxReconnectAttempts: Infinity,
-    shouldRetry: () => true,
+    shouldRetry: () => !streamingHalted,
     onOpened: () => console.log('worker: streaming socket open'),
     onClosed: () => console.log('worker: streaming socket closed — SDK will reconnect'),
     onError: (e) => console.error('worker: streaming socket error', e),
@@ -258,7 +293,7 @@ function resubscribeUpdates(cfg: ChainConfig): void {
     { chain_name: cfg.stream, pair_addresses: [...list] },
     {
       next: (data) => { void onPairUpdate(cfg, data); },
-      error: (err) => console.error(`worker: updatePairs error (${cfg.stream})`, err),
+      error: (err) => handleSubscriptionError(`updatePairs (${cfg.stream})`, err),
       complete: () => console.log(`worker: updatePairs stream completed (${cfg.stream})`),
     }
   );
@@ -273,7 +308,7 @@ function main(): void {
       { chain_name: cfg.stream, protocols: cfg.protocols },
       {
         next: (data) => { for (const p of data) void onNewPair(cfg, p); },
-        error: (err) => console.error(`worker: newPairs error (${cfg.stream})`, err),
+        error: (err) => handleSubscriptionError(`newPairs (${cfg.stream})`, err),
         complete: () => console.log(`worker: newPairs stream completed (${cfg.stream})`),
       }
     );
