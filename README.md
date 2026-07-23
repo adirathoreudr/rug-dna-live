@@ -15,7 +15,7 @@
 | 🔴 Risk Scoring | Heuristic engine scores each token 0–100 across 6 signal categories |
 | 🔬 Forensic Mode | Auto-generates case files with timeline & extraction path built strictly from observed onchain events |
 | 🏛 Governance Trust | Decentralization credibility score from real holder distribution |
-| 📡 Live Feed | Streaming worker consumes GoldRush `newPairs`/`updatePairs` and feeds an SSE ticker |
+| 📡 Live Feed | Streaming worker consumes GoldRush `newPairs`/`updatePairs` and feeds an SSE ticker *(requires a paid GoldRush plan)* |
 
 ---
 
@@ -52,6 +52,9 @@ Two processes share one Postgres store:
 1. **The Next.js app** (Vercel) — serves the UI and API routes; on first request it seeds a watchlist of well-known tokens via the Foundational REST API.
 2. **The streaming worker** (any always-on Node host — Railway/Render/Fly) — holds the GoldRush Streaming WebSocket, ingests newly created DEX pairs on Ethereum and Solana, watches their liquidity in real time, and writes rug-pull alerts into the store. Serverless functions can't hold a WebSocket, which is why this is a separate process.
 
+> [!IMPORTANT]
+> **The streaming worker (process 2) requires a paid GoldRush plan.** The GoldRush Streaming API (`newPairs`/`updatePairs`) is not included in the free "Development Key" tier — on a free key the subscription is rejected with `INSUFFICIENT_CREDITS` and the worker halts itself with a clear log message. The **Next.js app (process 1) runs fully on the free tier** using Foundational REST, giving real holder/deployer/risk data for the EVM watchlist. Real-time launch discovery, live liquidity alerts, and Solana intelligence require the paid tier.
+
 ## 🔗 GoldRush Integration
 
 ### Foundational REST (EVM chains)
@@ -65,14 +68,16 @@ Two processes share one Postgres store:
 
 Holder share is computed from `balance / total_supply`. Errors (rate limits, outages) are distinguished from empty results so a failed fetch can never masquerade as a low-risk score.
 
-### Streaming API (real-time; Ethereum + Solana)
+### Streaming API (real-time; Ethereum + Solana) — **paid tier required**
 
 | Subscription | Purpose |
 |---|---|
 | `newPairs` | Launch discovery — carries deployer, initial liquidity, market cap, token metadata |
 | `updatePairs` | Live liquidity/price — a >50% liquidity drop raises a critical alert and re-scores the project |
 
-Solana REST coverage is balances-only, so all Solana intelligence is streaming-first by design.
+These subscriptions are **not available on the free GoldRush tier** and require a paid plan (see [GoldRush pricing](https://goldrush.dev/pricing/) → the "Manage Plan" page in your dashboard). Without it, run the app on Foundational REST only — the EVM watchlist still shows real, live on-chain data.
+
+Solana REST coverage is balances-only, so all Solana intelligence is streaming-first by design — which also means **Solana requires the paid streaming tier**.
 
 ### Risk signals
 
@@ -97,7 +102,7 @@ Solana REST coverage is balances-only, so all Solana intelligence is streaming-f
 
 ### Prerequisites
 - Node.js 22+
-- A [GoldRush API key](https://goldrush.dev) (free tier available)
+- A [GoldRush API key](https://goldrush.dev) — free tier runs the REST-powered app; **a paid tier is required for the real-time streaming worker (and all Solana data)**
 - Optional: a Postgres database ([Neon](https://neon.tech) free tier) — without it the app runs on an in-memory store (fine locally, required in production)
 
 ### Installation
@@ -143,6 +148,8 @@ Requests are validated (address format, chain whitelist) and rate-limited.
 1. Create a service from this repo.
 2. Start command: `npm run worker` (Node 22+).
 3. Environment variables: `GOLDRUSH_API_KEY`, `DATABASE_URL` (same database as the web app).
+
+> Requires a **paid GoldRush plan** (streaming access). On a free key the worker logs `INSUFFICIENT_CREDITS` and halts itself instead of burning host compute — deploy it only once your plan includes the Streaming API.
 
 ---
 
