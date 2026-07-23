@@ -18,20 +18,28 @@ export default function Home() {
   const esRef = useRef<EventSource|null>(null);
 
   useEffect(() => {
-    fetch('/api/projects').then(r => r.json()).then(d => {
+    const load = () => fetch('/api/projects').then(r => r.json()).then(d => {
       setProjects(d.projects || []);
       setStats(d.stats || {});
       setLoading(false);
-    });
+    }).catch(() => setLoading(false));
+    load();
+    // Keep the dashboard fresh — worker/stream writes land in the store
+    const refresh = setInterval(load, 30_000);
+
     const es = new EventSource('/api/stream');
     esRef.current = es;
+    const seenEvents = new Set<string>();
     es.onmessage = (e) => {
       try {
         const ev = JSON.parse(e.data);
+        // The SSE window reconnects periodically; dedupe replayed events
+        if (ev.id && seenEvents.has(ev.id)) return;
+        if (ev.id) seenEvents.add(ev.id);
         setEvents(prev => [ev, ...prev].slice(0, 30));
       } catch {}
     };
-    return () => es.close();
+    return () => { es.close(); clearInterval(refresh); };
   }, []);
 
   const filteredProjects = activeMode === 'forensic'
@@ -80,8 +88,8 @@ export default function Home() {
             </span>
           ))}
           {/* Static fallback */}
-          {events.length === 0 && ['$RUGX — Forensic case FCS-2847 OPEN · 97% confidence', '$MOONFI — Holder concentration 61% · High risk', '$GOVTKN — 3 wallets control 91% of votes', 'GoldRush streaming — Connected · Monitoring active'].map((t,i) => (
-            <span key={`s${i}`} style={{ fontFamily:'Geist Mono,monospace', fontSize:10, letterSpacing:'0.1em', textTransform:'uppercase', color:i===0?'var(--red)':i===1?'var(--amber)':'var(--text3)', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:12 }}><span style={{fontSize:5}}>◆</span>{t}</span>
+          {events.length === 0 && ['Connecting to live intelligence feed…', 'Awaiting onchain events from GoldRush'].map((t,i) => (
+            <span key={`s${i}`} style={{ fontFamily:'Geist Mono,monospace', fontSize:10, letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text3)', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:12 }}><span style={{fontSize:5}}>◆</span>{t}</span>
           ))}
         </div>
       </div>
@@ -206,15 +214,23 @@ function AddProjectForm({ onAdded }: { onAdded: (p: Project) => void }) {
   const [addr, setAddr] = useState('');
   const [chain, setChain] = useState('eth-mainnet');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const handleSubmit = async () => {
     if (!addr) return;
-    setLoading(true);
-    const r = await fetch('/api/projects', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ tokenAddress: addr, chain }) });
-    const d = await r.json();
-    if (d.project) onAdded(d.project);
-    setAddr(''); setLoading(false);
+    setLoading(true); setError('');
+    try {
+      const r = await fetch('/api/projects', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ tokenAddress: addr, chain }) });
+      const d = await r.json();
+      if (d.project) { onAdded(d.project); setAddr(''); }
+      else setError(d.error || 'Failed to add project');
+    } catch {
+      setError('Network error — try again');
+    }
+    setLoading(false);
   };
   return (
+    <div>
+    {error && <div style={{ fontFamily:'Geist Mono,monospace', fontSize:10, color:'var(--red)', marginBottom:8 }}>{error}</div>}
     <div style={{ display:'flex', gap:8 }}>
       <input value={addr} onChange={e => setAddr(e.target.value)} placeholder="Token contract address (0x...)"
         style={{ flex:1, padding:'8px 12px', background:'var(--bg3)', border:'1px solid var(--border2)', color:'var(--text)', fontFamily:'Geist Mono,monospace', fontSize:11, outline:'none' }} />
@@ -229,6 +245,7 @@ function AddProjectForm({ onAdded }: { onAdded: (p: Project) => void }) {
         style={{ padding:'8px 16px', background: loading ? 'var(--surface2)' : 'var(--text)', color:'var(--bg)', fontFamily:'Geist Mono,monospace', fontSize:11, border:'none', cursor:'pointer', letterSpacing:'0.1em' }}>
         {loading ? '...' : 'ADD'}
       </button>
+    </div>
     </div>
   );
 }

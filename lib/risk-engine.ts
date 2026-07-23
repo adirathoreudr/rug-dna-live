@@ -97,10 +97,10 @@ function scoreDeployerReuse(input: RiskInput, evidence: EvidenceItem[]): number 
     evidence.push({
       id: nanoid(),
       signal: 'Deployer Wallet Reuse',
-      description: `Deployer address ${project.deployerAddress.slice(0, 10)}... matches ${priorRugs} previously flagged contract deployment${priorRugs > 1 ? 's' : ''}. Behavioral signature similarity: ${55 + priorRugs * 14}%.`,
+      description: `Deployer address ${project.deployerAddress.slice(0, 10)}... has ${priorRugs} other contract deployment${priorRugs > 1 ? 's' : ''} in its recent transaction history — serial-deployer pattern.`,
       weight,
-      confidence: 0.55 + priorRugs * 0.14,
-      txHashes: [],
+      confidence: Math.min(0.97, 0.55 + priorRugs * 0.14),
+      txHashes: deployerTxHistory.slice(0, 5),
       wallets: [project.deployerAddress],
       timestamp: Date.now(),
     });

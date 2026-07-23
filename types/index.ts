@@ -211,7 +211,15 @@ export interface DominantWallet {
 export interface ProjectListResponse {
   projects: Project[];
   total: number;
-  chains: Chain[];
+  stats: {
+    totalProjects: number;
+    critical: number;
+    high: number;
+    moderate: number;
+    low: number;
+    openCases: number;
+    totalEvents: number;
+  };
   lastUpdated: number;
 }
 
@@ -249,7 +257,7 @@ export interface GRTransaction {
   block_height: number;
   block_signed_at: string;
   from_address: string;
-  to_address: string;
+  to_address: string | null;
   value: string;
   value_quote?: number;
   gas_price: string;

@@ -10,11 +10,11 @@ export async function GET(req: Request) {
   const id = searchParams.get('id');
 
   if (id) {
-    const fc = db.getForensicCase(id);
+    const fc = await db.getForensicCase(id);
     if (!fc) return NextResponse.json({ error: 'Case not found' }, { status: 404 });
     return NextResponse.json({ case: fc });
   }
 
-  const cases = db.getAllForensicCases();
+  const cases = await db.getAllForensicCases();
   return NextResponse.json({ cases, total: cases.length });
 }

@@ -32,17 +32,23 @@ export function computeGovernanceScore(input: GovernanceInput): GovernanceScore 
   // 4. Dominant wallets
   const dominantWallets = identifyDominantWallets(holders, governanceEvents);
 
-  // 5. Composite trust score
-  const trustScore = Math.round(
-    distributionScore * 0.4 +
-    voteIndependenceScore * 0.35 +
-    transparencyScore * 0.25
-  );
+  // 5. Composite trust score. Without ingested voting data the
+  // vote-independence and transparency components are unknown, so the
+  // composite is distribution-only rather than blending neutral
+  // placeholders into a number that looks fully analyzed.
+  const hasVotingData = governanceEvents.some(e => e.eventType === 'governance_vote');
+  const trustScore = hasVotingData
+    ? Math.round(
+        distributionScore * 0.4 +
+        voteIndependenceScore * 0.35 +
+        transparencyScore * 0.25
+      )
+    : Math.round(distributionScore);
 
   const credibility = getCredibility(trustScore);
   const explanation = generateGovernanceExplanation(
     trustScore, credibility, distributionScore,
-    voteIndependenceScore, dominantWallets, project.tokenSymbol
+    voteIndependenceScore, dominantWallets, project.tokenSymbol, hasVotingData
   );
 
   return {
@@ -213,7 +219,8 @@ function generateGovernanceExplanation(
   distributionScore: number,
   voteIndependenceScore: number,
   dominantWallets: DominantWallet[],
-  symbol: string
+  symbol: string,
+  hasVotingData = false
 ): string {
   const credibilityLabels = {
     credible: 'appears credible',
@@ -231,7 +238,11 @@ function generateGovernanceExplanation(
     explanation += `Token distribution is heavily concentrated — the top holder controls ${topPct.toFixed(1)}% of voting supply. `;
   }
 
-  if (voteIndependenceScore < 40) {
+  if (!hasVotingData) {
+    explanation += `Score is derived from token-holder distribution only — no onchain voting history has been ingested for this project yet. `;
+  }
+
+  if (hasVotingData && voteIndependenceScore < 40) {
     explanation += `Voting behavior analysis indicates coordinated governance: dominant wallets vote identically at high rates. `;
   }
 

@@ -9,16 +9,14 @@ export async function GET(req: Request) {
   const projectId = searchParams.get('projectId');
 
   if (projectId) {
-    const gs = db.getGovernanceScore(projectId);
+    const gs = await db.getGovernanceScore(projectId);
     if (!gs) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return NextResponse.json({ governanceScore: gs });
   }
 
   // Return all governance scores
-  const projects = db.getAllProjects();
-  const scores = projects
-    .map(p => db.getGovernanceScore(p.id))
-    .filter(Boolean);
+  const projects = await db.getAllProjects();
+  const scores = (await Promise.all(projects.map(p => db.getGovernanceScore(p.id)))).filter(Boolean);
 
   return NextResponse.json({ scores });
 }

@@ -34,7 +34,7 @@ export default function CasePage({ params }: { params: Promise<{ id: string }> }
             <span className="badge badge-critical" style={{ fontSize:11, padding:'6px 16px' }}>{fc.severity?.toUpperCase()} · {Math.round((fc.confidence||0)*100)}% Confidence</span>
             <span style={{ fontFamily:'Geist Mono,monospace', fontSize:10, color: fc.status==='open' ? 'var(--red)' : 'var(--green)', border:'1px solid', borderColor: fc.status==='open' ? 'rgba(255,59,59,0.3)' : 'rgba(0,255,136,0.3)', padding:'4px 10px' }}>{fc.status?.toUpperCase()}</span>
           </div>
-          <div style={{ fontFamily:'Geist Mono,monospace', fontSize:12, color:'var(--text2)' }}>$${fc.tokenSymbol} · Triggered: {new Date(fc.triggeredAt).toLocaleString()}</div>
+          <div style={{ fontFamily:'Geist Mono,monospace', fontSize:12, color:'var(--text2)' }}>{`$${fc.tokenSymbol}`} · Triggered: {new Date(fc.triggeredAt).toLocaleString()}</div>
         </div>
 
         {/* AI Narrative */}

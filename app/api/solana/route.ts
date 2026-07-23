@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   await seedMockData();
 
-  const allProjects = db.getAllProjects();
+  const allProjects = await db.getAllProjects();
   const solanaProjects = allProjects.filter(p => p.chain === 'solana-mainnet');
 
   let newLaunches: unknown[] = [];

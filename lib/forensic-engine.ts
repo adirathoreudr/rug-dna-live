@@ -114,7 +114,7 @@ function buildTimeline(
   // Phase 3: Risk threshold crossed
   timeline.push({
     id: nanoid(),
-    timestamp: Date.now() - 2 * 60 * 60 * 1000, // 2h ago for demo
+    timestamp: Date.now(),
     label: 'FORENSIC MODE TRIGGERED',
     description: `Risk score crossed threshold (${riskScore.score}/100). Case auto-generated. ${riskScore.evidenceItems.length} evidence items confirmed.`,
     severity: 'critical',
@@ -140,35 +140,27 @@ function buildTimeline(
 }
 
 function buildExtractionPath(events: NormalizedEvent[], project: Project): ExtractionStep[] {
-  const steps: ExtractionStep[] = [];
+  // Built strictly from observed onchain events — no step is invented.
+  // Empty when no extraction-shaped activity has been recorded yet.
+  const sorted = [...events].sort((a, b) => a.timestamp - b.timestamp);
+  const extractionEvents = sorted.filter(e =>
+    e.eventType === 'liquidity_remove' ||
+    (e.eventType === 'token_transfer' &&
+      e.fromAddress?.toLowerCase() === project.deployerAddress.toLowerCase() &&
+      (e.amountUsd ?? 0) > 0)
+  );
 
-  // Step 1: Deployer → Pool drain
-  steps.push({
-    step: 1,
-    fromAddress: project.deployerAddress,
-    toAddress: project.pairAddress ?? '0x0000...POOL',
-    amount: 'LP Tokens',
-    amountUsd: 0,
-    txHash: '0x' + Math.random().toString(16).slice(2, 66),
-    timestamp: Date.now() - 60 * 60 * 1000,
-    action: 'Liquidity removal (removeLiquidity)',
+  return extractionEvents.slice(0, 10).map((e, i) => ({
+    step: i + 1,
+    fromAddress: e.fromAddress ?? project.deployerAddress,
+    toAddress: e.toAddress ?? project.pairAddress ?? '',
+    amount: e.amount ?? '',
+    amountUsd: e.amountUsd ?? 0,
+    txHash: e.txHash,
+    timestamp: e.timestamp,
+    action: e.eventType === 'liquidity_remove' ? 'Liquidity removal observed' : 'Outbound transfer from deployer',
     chain: project.chain,
-  });
-
-  // Step 2: Pool → ETH
-  steps.push({
-    step: 2,
-    fromAddress: project.pairAddress ?? '0x0000...POOL',
-    toAddress: project.deployerAddress,
-    amount: 'ETH proceeds',
-    amountUsd: 0,
-    txHash: '0x' + Math.random().toString(16).slice(2, 66),
-    timestamp: Date.now() - 59 * 60 * 1000,
-    action: 'ETH withdrawn from pool',
-    chain: project.chain,
-  });
-
-  return steps;
+  }));
 }
 
 function generateNarrative(
@@ -183,7 +175,7 @@ function generateNarrative(
   let narrative = `This case was triggered automatically when $${project.tokenSymbol} exceeded the risk threshold of ${FORENSIC_TRIGGER_SCORE} at a score of ${riskScore.score}.\n\n`;
 
   if (priorRugs > 0) {
-    narrative += `The deployer address (${project.deployerAddress.slice(0, 10)}...) matches ${priorRugs} previously confirmed rug event${priorRugs > 1 ? 's' : ''} with ${Math.round(riskScore.confidence * 100)}% confidence based on contract bytecode similarity, wallet funding patterns, and timing signatures.\n\n`;
+    narrative += `The deployer address (${project.deployerAddress.slice(0, 10)}...) has ${priorRugs} other contract deployment${priorRugs > 1 ? 's' : ''} in its recent transaction history — a serial-deployer pattern that raises reuse risk.\n\n`;
   }
 
   const clusterEvidence = riskScore.evidenceItems.find(e => e.signal.includes('Cluster'));
